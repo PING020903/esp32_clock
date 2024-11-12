@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <wchar.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -18,6 +19,7 @@
 #include "User_SNTP.h"
 #include "User_MQTT.h"
 #include "cJSON.h"
+#include "CommandParse.h"
 #include "User_uartDebug.h"
 
 #define COMMAND_LENGTH (128)
@@ -60,8 +62,15 @@
 #define STR_STOPWATCH "stopwatch"
 #define STR_STATUS "status"
 #define STR_LEDPERIOD "ledperiod"
+#define STR_WIFISCAN "wifiscan"
+#define STR_WIFIAP "wifiap"
+#define STR_DESC "desc"
 
 #define STREND '\0'
+#define LINE_END_CR "\r"
+#define LINE_END_LF "\n"
+#define LINE_END_CRLF "\r\n"
+#define LINE_END_NONE ""
 #define TIME_SEPARATOR ':'
 #define WIFI_SEPARATOR ','
 #define STR_TIME_SEPARATOR ":"
@@ -71,8 +80,19 @@
 #define TIME_PARSE_DEBUG 0
 #define WIFI_PRASE_DEBUG 0
 
+#define ENABLE_FUNCTION_HELP 1
+#define ENABLE_FUNCTION_CHECK 1
+#define ENABLE_FUNCTION_SET 1
+#define ENABLE_FUNCTION_MQTT 1
+#define ENABLE_FUNCTION_MODE 1
+
 static const char *TAG = "User_Debug";
-static unsigned char command[COMMAND_LENGTH] = {0};
+static char command[COMMAND_LENGTH] = {0};
+static unsigned char handleFlag = false; // 当前输入的命令是否有被处理
+
+#define WIFI_STRING_FROMAT_DESCRIPTION "ssid:YOUR_SSID,\
+password:YOUR_PASSWORD,\
+auth:AUTH_TYPE_NUM"
 
 #define CheckTimeDescription "print current time"
 #define CheckClockDescription "print target ring time and how long until the bell rings"
@@ -80,8 +100,11 @@ static unsigned char command[COMMAND_LENGTH] = {0};
 #define CheckRestartDescription "last restart reason"
 #define CheckChipDescription "print chip info"
 #define CheckWifiDescription "print wifi connection status"
+#define CheckWifiScanDescription "scan wifi ap"
 
 #define SetClockDescription "set target ring time"
+#define SetWifiApDescription1 "enable, set wifi ap ssid, password and auth mode"
+#define SetWifiApDescription2 "disable wifi ap"
 #define SetWifiDescription "set wifi connect ssid, password and auth mode"
 #define SetBellDescription "set bell task status"
 #define SetLedDescription "set LED task status"
@@ -91,18 +114,15 @@ static unsigned char command[COMMAND_LENGTH] = {0};
 extern TaskHandle_t LED_handle;
 extern TaskHandle_t Bell_handle;
 
-enum
+
+
+/// @brief 数学运算
+/// @param str 待解析的字符串
+/// @return 
+static int MathOperation(const char *str)
 {
-    COMMAND_NO_PARAMETERS = 0,
-    COMMAND_CHECK,
-    COMMAND_SET,
-    COMMAND_UPDATE,
-    COMMAND_ABORT,
-    COMMAND_HELP,
-    COMMAND_MQTT,
-    COMMAND_MODE,
-    COMMAND_UNKNOWN,
-};
+    return 0;
+}
 
 /// @brief cJSON打印函数
 /// @param root
@@ -579,117 +599,7 @@ static char *UserWordParse(const char *str, const char *CMD)
                : NULL;
 }
 
-/// @brief 为pos, cmdLen赋值
-/// @param cmdStr 经过检查后的源命令字符串
-/// @param pos 要被赋值的
-/// @param cmd 命令
-/// @param cmdLen 命令长度
-/// @return OK:1, ERROR:0
-static int Assign(const char *cmdStr, char **pos, const char *cmd, size_t *cmdLen)
-{
-    if (cmdStr == NULL || cmd == NULL || cmdLen == NULL)
-        return 0;
 
-    *pos = cmdStr;
-    *cmdLen = strlen(cmd);
-    return 1;
-}
-
-/// @brief 命令解析
-/// @param
-/// @return ERROR: COMMAND_NO_PARAMETERS, COMMAND_UNKNOWN
-static int CommandParse(void)
-{
-    char *pos = NULL;
-    size_t len;
-#define COMMAND_COMPARE(true_command, false_command) (*(pos + len) == COMMAND_SPACE && \
-                                                      *(pos + len + 1) != STREND &&    \
-                                                      (unsigned char *)pos == command) \
-                                                         ? true_command                \
-                                                         : false_command
-
-    pos = UserWordParse((char *)command, RESTART_COMMAND);
-    if ((unsigned char *)pos == command && *(pos + strlen(RESTART_COMMAND)) == STREND)
-        esp_restart();
-
-    // find the string from command, not found return null
-    if (Assign(UserWordParse((char *)command, ABORT_COMMAND), &pos, ABORT_COMMAND, &len))
-    {
-        len = strlen(ABORT_COMMAND);
-        return COMMAND_COMPARE(COMMAND_ABORT, COMMAND_NO_PARAMETERS);
-    }
-    else if (Assign(UserWordParse((char *)command, CHECK_COMMAND), &pos, CHECK_COMMAND, &len))
-    {
-        return COMMAND_COMPARE(COMMAND_CHECK, COMMAND_NO_PARAMETERS);
-    }
-    else if (Assign(UserWordParse((char *)command, HELP_COMMAND), &pos, HELP_COMMAND, &len))
-    {
-        return ((unsigned char *)pos == command && *(pos + len) == STREND)
-                   ? COMMAND_HELP
-                   : COMMAND_NO_PARAMETERS;
-    }
-    else if (Assign(UserWordParse((char *)command, MQTT_COMMAND), &pos, MQTT_COMMAND, &len))
-    {
-        return COMMAND_COMPARE(COMMAND_MQTT, COMMAND_NO_PARAMETERS);
-    }
-    else if (Assign(UserWordParse((char *)command, MODE_COMMAND), &pos, MODE_COMMAND, &len))
-    {
-        return COMMAND_COMPARE(COMMAND_MODE, COMMAND_NO_PARAMETERS);
-    }
-    else if (Assign(UserWordParse((char *)command, SET_COMMAND), &pos, SET_COMMAND, &len))
-    {
-        return COMMAND_COMPARE(COMMAND_SET, COMMAND_NO_PARAMETERS);
-    }
-    else if (Assign(UserWordParse((char *)command, UPDATE_COMMAND), &pos, UPDATE_COMMAND, &len))
-    {
-        return COMMAND_COMPARE(COMMAND_UPDATE, COMMAND_NO_PARAMETERS);
-    }
-
-    return COMMAND_UNKNOWN;
-}
-
-/// @brief 参数解析和命令执行
-/// @param paramete 参数
-/// @param StrEnd 参数结尾
-/// @param func 需要执行的操作
-/// @param arg func的参数( StrEnd 为 COMMAND_EQUAL 时,
-// 给 NULL 传递 command paramete 后跟的字符串 )
-/// @return OK: ESP_OK; ERROR: ESP_FAIL;
-static esp_err_t ParameterCheckAndOperate(const char *paramete,
-                                          const char StrEnd,
-                                          void(func)(void *arg),
-                                          void *arg)
-{
-    char *pos = strstr((char *)command, paramete);
-    if (func == NULL)
-    {
-        ESP_LOGE(__func__, "No handler function");
-        return ESP_FAIL;
-    }
-
-    if (pos && *(pos - 1) == ' ' && *(pos + strlen(paramete)) == StrEnd)
-        goto CHECK_OK;
-    else
-        return ESP_FAIL;
-CHECK_OK:
-
-    switch (StrEnd)
-    {
-    case STREND:
-        func(arg);
-        break;
-    case COMMAND_EQUAL:
-        pos = pos + strlen(paramete);
-        (arg == NULL)
-            ? func((void *)pos)
-            : func(arg);
-        break;
-    default:
-        return ESP_FAIL;
-    }
-
-    return ESP_OK;
-}
 
 static void CheckTime(void *arg)
 {
@@ -727,7 +637,12 @@ static void CheckChip(void *arg)
 }
 static void CheckWifi(void *arg)
 {
-    Show_Wifi_connectionInfo_sta();
+    Show_Wifi_Info();
+}
+static void CheckWifisacn(void *arg)
+{
+
+    show_wifi_list();
 }
 static void CheckTaskList(void *arg)
 {
@@ -773,7 +688,7 @@ static void CheckStatus(void *arg)
              (timeTemp % (MINUTE_OF_HOUR * SECOND_OF_MINUTE)) / SECOND_OF_MINUTE,
              timeTemp % SECOND_OF_MINUTE);
     CheckStopwatch();
-    Show_Wifi_connectionInfo_sta();
+    Show_Wifi_Info();
 
     ReadPeriodicCloseLedTargetTime(&hour, &minute, &second);
     ESP_LOGI(TAG, "set periodic close LED target time: %u:%u:%u", hour, minute, second);
@@ -850,10 +765,55 @@ static void SetWifi(void *arg)
     char passwd[CONNECT_PASSWD_LEN] = {0};
     int auth = 0;
 
-    WifiStrParse(pos, ssid, passwd, &auth);
-    ESP_LOGI(TAG, "ssid: %s, passwd: %s, auth: %d", ssid, passwd, auth);
-    SetConnectionInfo(ssid, passwd, auth);
-    User_WIFI_changeConnection_sta();
+    if (strstr(pos, "disable") &&
+        *pos == COMMAND_EQUAL) // 命令参数中仅有 "disable"
+    {
+        ESP_LOGI(TAG, "close station %s", (User_WIFI_disable_sta()) ? "failed" : "success");
+    }
+    else
+    {
+        WifiStrParse(pos, ssid, passwd, &auth);
+        ESP_LOGI(TAG, "ssid: %s, passwd: %s, auth: %d", ssid, passwd, auth);
+        SetConnectionInfo(ssid, passwd, auth);
+        User_WIFI_changeConnection_sta();
+    }
+}
+static void SetWifiAp(void *arg)
+{
+    char *pos = (char *)arg;
+    char ssid[CONNECT_SSID_LEN] = {0};
+    char passwd[CONNECT_PASSWD_LEN] = {0};
+    int auth = 0;
+    esp_err_t err = ESP_OK;
+
+    ESP_LOGI(__func__, "pos = %c, pos+%d = %d, pos+%d = %d, pos+%d = %d",
+             *pos,
+             strlen("disable") + 1, *(pos + strlen("disable") + 1),
+             strlen("disable") + 2, *(pos + strlen("disable") + 2),
+             strlen("disable") + 3, *(pos + strlen("disable") + 4));
+    if (strstr(pos, "disable") &&
+        *pos == COMMAND_EQUAL) // 命令参数中仅有 "disable"
+    {
+        ESP_LOGI(TAG, "close AP %s", (User_WIFI_disable_AP()) ? "failed" : "success");
+    }
+    else
+    {
+        err = WifiStrParse(pos, ssid, passwd, &auth);
+        if (err != ESP_OK || ssid[0] == '\0')
+        {
+            err = User_WIFI_enable_AP(NULL, NULL, 0);
+        }
+        else
+        {
+            // 密码为空, 传入NULL
+            err = (passwd[0])
+                      ? User_WIFI_enable_AP(ssid, passwd, strlen(ssid))
+                      : User_WIFI_enable_AP(ssid, NULL, strlen(ssid));
+        }
+
+        ESP_LOGI(TAG, "open AP %s", (err) ? "failed" : "success");
+    }
+    Show_Wifi_Info();
 }
 static void SetCountDown(void *arg)
 {
@@ -988,115 +948,17 @@ STOPWATCH_MODE:
     SetStopwatch_record();
 }
 
-static esp_err_t ParametersParseOfCommand(void)
+/// @brief 命令行帮助信息
+/// @param
+static void HelpDescription(void)
 {
-    char *pos = (char *)command;
-    esp_err_t err = ESP_OK;
-    const char *help_str = "You can input \"help\" to get help";
-    int expression = CommandParse();
-
-    switch (expression)
-    {
-    case COMMAND_NO_PARAMETERS:
-        ESP_LOGW(TAG, "no parameters or invalid command... %s", help_str);
-        break;
-    case COMMAND_CHECK:
-    {
-        pos += strlen(CHECK_COMMAND) + 1;
-        switch (*pos)
-        {
-        case 'c':
-            err = ParameterCheckAndOperate(STR_CLOCK, STREND, CheckClock, NULL);
-            err = ParameterCheckAndOperate(STR_CHIP, STREND, CheckChip, NULL);
-            break;
-        case 't':
-            err = ParameterCheckAndOperate(STR_TIME, STREND, CheckTime, NULL);
-            err = ParameterCheckAndOperate(STR_TASKLIST, STREND, CheckTaskList, NULL);
-            break;
-        case 'w':
-            err = ParameterCheckAndOperate(STR_WIFI, STREND, CheckWifi, NULL);
-            break;
-        case 'r':
-            err = ParameterCheckAndOperate(STR_RESTART, STREND, CheakRestartReason, NULL);
-            break;
-        case 'h':
-            err = ParameterCheckAndOperate(STR_HEAP, STREND, CheckHeap, NULL);
-            break;
-        case 's':
-            err = ParameterCheckAndOperate(STR_STOPWATCH, STREND, CheckStopwatch_, NULL);
-            err = ParameterCheckAndOperate(STR_STATUS, STREND, CheckStatus, NULL);
-            break;
-        case 'l':
-            err = ParameterCheckAndOperate(STR_LED, STREND, CheckLed, NULL);
-            err = ParameterCheckAndOperate(STR_LEDPERIOD, STREND, CheckPeriodicCloseLed, NULL);
-            break;
-        default:
-            ESP_LOGW(TAG, "%s%c( unknown parameter )", CHECK_COMMAND, COMMAND_SPACE);
-            break;
-        }
-    }
-    break;
-    case COMMAND_SET:
-    {
-
-        pos += strlen(SET_COMMAND) + 1;
-        switch (*pos)
-        {
-        case 'c':
-            err = ParameterCheckAndOperate(STR_CLOCK, COMMAND_EQUAL,
-                                           SetClock, NULL);
-            err = ParameterCheckAndOperate(STR_COUNTDOWN, COMMAND_EQUAL,
-                                           SetCountDown, NULL);
-            break;
-        case 'l':
-            err = ParameterCheckAndOperate(STR_LED, COMMAND_EQUAL,
-                                           SetLed, NULL);
-            err = ParameterCheckAndOperate(STR_LEDPERIOD, COMMAND_EQUAL,
-                                           SetPeriodicCloseLed, NULL);
-            break;
-        case 'b':
-            err = ParameterCheckAndOperate(STR_BELL, COMMAND_EQUAL,
-                                           SetBell, NULL);
-            break;
-        case 'w':
-            err = ParameterCheckAndOperate(STR_WIFI, COMMAND_EQUAL,
-                                           SetWifi, NULL);
-            break;
-        default:
-            ESP_LOGW(TAG, "%s%c( unknown parameter )", SET_COMMAND, COMMAND_SPACE);
-            break;
-        }
-    }
-    break;
-    case COMMAND_UPDATE:
-    {
-        pos += strlen(UPDATE_COMMAND) + 1;
-        switch (*pos)
-        {
-        case 'n':
-            err = ParameterCheckAndOperate(STR_NTP, STREND, UpdateNtp, NULL);
-            break;
-        default:
-            ESP_LOGW(TAG, "%s%c( unknown parameter )", UPDATE_COMMAND, COMMAND_SPACE);
-            break;
-        }
-    }
-    break;
-    case COMMAND_ABORT:
-    {
-        pos = (char *)command;
-        esp_system_abort(pos + 1);
-    }
-    break;
-    case COMMAND_HELP:
-    {
 #define PRINT_SPACES_COMMAND(COMMAND) \
     printf("command:\n        %s\n( %s )parameter:\n", COMMAND, COMMAND)
 
-#define PRINT_SPACES_PARAMETER_CHECK(PARAMETER, EXPLANATION) \
+#define PRINT_CHECK_PARAMETER(PARAMETER, EXPLANATION) \
     printf("        %s    %s\n", PARAMETER, EXPLANATION)
 
-#define PRINT_SPACES_PARAMETER_SET(PARAMETER, FORMAT_DATA, EXPLANATION) \
+#define PRINT_SET_PARAMETER(PARAMETER, FORMAT_DATA, EXPLANATION) \
     printf("        %s%c%s    %s\n", PARAMETER, COMMAND_EQUAL, FORMAT_DATA, EXPLANATION)
 
 #define PRINT_CUT_UP_LINE(NUM)       \
@@ -1104,114 +966,53 @@ static esp_err_t ParametersParseOfCommand(void)
         putchar('-');                \
     putchar('\n')
 
-        PRINT_CUT_UP_LINE(18);
-        PRINT_SPACES_COMMAND(CHECK_COMMAND);
-        PRINT_SPACES_PARAMETER_CHECK(STR_TIME, CheckTimeDescription);
-        PRINT_SPACES_PARAMETER_CHECK(STR_CLOCK, CheckClockDescription);
-        PRINT_SPACES_PARAMETER_CHECK(STR_HEAP, CheckHeapDescription);
-        PRINT_SPACES_PARAMETER_CHECK(STR_RESTART, CheckRestartDescription);
-        PRINT_SPACES_PARAMETER_CHECK(STR_CHIP, CheckChipDescription);
-        PRINT_SPACES_PARAMETER_CHECK(STR_WIFI, CheckWifiDescription);
-        PRINT_CUT_UP_LINE(18);
+    putchar('\n');
+    PRINT_CUT_UP_LINE(18);
+    PRINT_SPACES_COMMAND(CHECK_COMMAND);
+    PRINT_CHECK_PARAMETER(STR_TIME, CheckTimeDescription);
+    PRINT_CHECK_PARAMETER(STR_CLOCK, CheckClockDescription);
+    PRINT_CHECK_PARAMETER(STR_HEAP, CheckHeapDescription);
+    PRINT_CHECK_PARAMETER(STR_RESTART, CheckRestartDescription);
+    PRINT_CHECK_PARAMETER(STR_CHIP, CheckChipDescription);
+    PRINT_CHECK_PARAMETER(STR_WIFI, CheckWifiDescription);
+    PRINT_CHECK_PARAMETER(STR_WIFISCAN, CheckWifiScanDescription);
+    PRINT_CUT_UP_LINE(18);
 
-        PRINT_SPACES_COMMAND(SET_COMMAND);
-        PRINT_SPACES_PARAMETER_SET(STR_CLOCK, "hh:mm:ss", SetClockDescription);
-        PRINT_SPACES_PARAMETER_SET(STR_LED, "NUM ( 0:off, other:on )", SetLedDescription);
-        PRINT_SPACES_PARAMETER_SET(STR_BELL, "NUM ( 0:off, other:on )", SetBellDescription);
-        PRINT_SPACES_PARAMETER_SET(STR_WIFI,
-                                   "ssid:YOUR_SSID,password:YOUR_PASSWORD,auth:AUTH_TYPE_NUM",
-                                   SetWifiDescription);
-        printf("AUTH_TYPE_NUM:\n");
-        printf("        0 = WIFI_AUTH_OPEN\n");
-        printf("        1 = WIFI_AUTH_WEP\n");
-        printf("        2 = WIFI_AUTH_WPA_PSK\n");
-        printf("        3 = WIFI_AUTH_WPA2_PSK\n");
-        printf("        6 = WIFI_AUTH_WPA3_PSK\n");
-        PRINT_CUT_UP_LINE(18);
+    PRINT_SPACES_COMMAND(SET_COMMAND);
+    PRINT_SET_PARAMETER(STR_CLOCK, "hh:mm:ss", SetClockDescription);
+    PRINT_SET_PARAMETER(STR_LED, "NUM ( 0:off, other:on )", SetLedDescription);
+    PRINT_SET_PARAMETER(STR_BELL, "NUM ( 0:off, other:on )", SetBellDescription);
+    PRINT_SET_PARAMETER(STR_WIFIAP,
+                        WIFI_STRING_FROMAT_DESCRIPTION,
+                        SetWifiApDescription1);
+    PRINT_SET_PARAMETER(STR_WIFIAP,
+                        "disable",
+                        SetWifiApDescription2);
+    PRINT_SET_PARAMETER(STR_WIFI,
+                        WIFI_STRING_FROMAT_DESCRIPTION,
+                        SetWifiDescription);
+    printf("AUTH_TYPE_NUM:\n");
+    printf("        0 = WIFI_AUTH_OPEN\n");
+    printf("        1 = WIFI_AUTH_WEP\n");
+    printf("        2 = WIFI_AUTH_WPA_PSK\n");
+    printf("        3 = WIFI_AUTH_WPA2_PSK\n");
+    printf("        6 = WIFI_AUTH_WPA3_PSK\n");
+    PRINT_CUT_UP_LINE(18);
 
-        PRINT_SPACES_COMMAND(UPDATE_COMMAND);
-        PRINT_SPACES_PARAMETER_CHECK(STR_NTP, UpdateNtpDescription);
-        PRINT_CUT_UP_LINE(18);
+    PRINT_SPACES_COMMAND(UPDATE_COMMAND);
+    PRINT_CHECK_PARAMETER(STR_NTP, UpdateNtpDescription);
+    PRINT_CUT_UP_LINE(18);
 
-        PRINT_SPACES_COMMAND(ABORT_COMMAND);
-        printf("        ( The parameters here are user-defined strings. )\n");
-        PRINT_CUT_UP_LINE(18);
-    }
-    break;
-    case COMMAND_MQTT:
-    {
-        My_tm time;
-        get_time_from_timer_v2(&time);
-        pos += strlen(MQTT_COMMAND) + 1;
-        switch (*pos)
-        {
-        case 'i':
-            err = ParameterCheckAndOperate(STR_INIT, STREND,
-                                           UserMqttInit, NULL);
-            break;
-        case 'u':
-            err = ParameterCheckAndOperate(STR_UNSUBSCRIBE,
-                                           COMMAND_EQUAL,
-                                           UserMqttUnsubscribe,
-                                           NULL);
-            break;
-        case 'd':
-            err = ParameterCheckAndOperate(STR_DEINIT, STREND,
-                                           UserMqttDeinit, NULL);
-            err = ParameterCheckAndOperate(STR_DISCONNECT, STREND,
-                                           UserMqttDisconnect, NULL);
-            break;
-        case 's':
-            err = ParameterCheckAndOperate(STR_SUBSCRIBE, COMMAND_EQUAL,
-                                           UserMqttSubscribe, NULL);
-            break;
-        case 'p':
-            err = ParameterCheckAndOperate(STR_PUBLISH, COMMAND_EQUAL,
-                                           UserMqttPublish, NULL);
-            break;
-        case 'c':
-            err = ParameterCheckAndOperate(STR_CONNECT, STREND,
-                                           UserMqttConnect, NULL);
-            break;
-        case 't':
-            err = ParameterCheckAndOperate(STR_TEST, COMMAND_EQUAL,
-                                           UserMqttTest, NULL);
-
-            break;
-        default:
-            ESP_LOGW(TAG, "%s%c( unknown parameter )", MQTT_COMMAND, COMMAND_SPACE);
-            break;
-        }
-    }
-    break;
-    case COMMAND_MODE:
-    {
-        pos += strlen(MODE_COMMAND) + 1;
-        switch (*pos)
-        {
-        case 'c': // clock
-            err = ParameterCheckAndOperate(STR_CLOCK, STREND, ModeClock, NULL);
-            break;
-        case 's': // stopwatch
-            err = ParameterCheckAndOperate(STR_STOPWATCH, STREND, ModeStopwatch, NULL);
-            break;
-        default:
-            ESP_LOGI(TAG, "clock unknown mode");
-            break;
-        }
-    }
-    break;
-    default:
-        ESP_LOGW(TAG, "unknown command. %s", help_str);
-        break;
-    }
-
-    return ESP_OK;
+    PRINT_SPACES_COMMAND(ABORT_COMMAND);
+    printf("        ( The parameters here are user-defined strings. )\n");
+    PRINT_CUT_UP_LINE(18);
 }
+
+
 
 static void read_command(void *arg)
 {
-
+    //char cmdStr[COMMAND_SIZE] = {0};
     esp_err_t ret = 0;
     while (1)
     {
@@ -1230,7 +1031,7 @@ static void read_command(void *arg)
             vTaskDelay(1);
 #endif
         (ret)
-            ? ParametersParseOfCommand()
+            ? CommandParse(command)
             : vTaskDelay(1);
     }
 }
@@ -1241,6 +1042,7 @@ static void read_command(void *arg)
 esp_err_t uart_debug_init(void)
 {
     esp_err_t err;
+    command_node *node = NULL;
     uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -1270,6 +1072,53 @@ esp_err_t uart_debug_init(void)
     if (err)
         goto exit;
 
+#if ENABLE_FUNCTION_MODE
+    RegisterCommand(false, MODE_COMMAND, NULL);
+    node = FindCommand(MODE_COMMAND, NULL);
+    RegisterParameter(node, ModeClock, STR_CLOCK, NULL);
+    RegisterParameter(node, ModeStopwatch, STR_STOPWATCH, NULL);
+#endif
+#if ENABLE_FUNCTION_HELP
+    RegisterCommand(false, HELP_COMMAND, NULL);
+    node = FindCommand(HELP_COMMAND, NULL);
+    RegisterParameter(node, HelpDescription, STR_DESC, NULL);
+#endif
+#if ENABLE_FUNCTION_CHECK
+    RegisterCommand(false, CHECK_COMMAND, NULL);
+    node = FindCommand(CHECK_COMMAND, NULL);
+    RegisterParameter(node, CheckTime, STR_TIME, NULL);
+    RegisterParameter(node, CheckClock, STR_CLOCK, NULL);
+    RegisterParameter(node, CheckHeap, STR_HEAP, NULL);
+    RegisterParameter(node, CheckChip, STR_CHIP, NULL);
+    RegisterParameter(node, CheckWifi, STR_WIFI, NULL);
+    RegisterParameter(node, CheckWifisacn, STR_WIFISCAN, NULL);
+    RegisterParameter(node, CheakRestartReason, STR_RESTART, NULL);
+    RegisterParameter(node, CheckStopwatch_, STR_STOPWATCH, NULL);
+    RegisterParameter(node, CheckStatus, STR_STATUS, NULL);
+#endif
+#if ENABLE_FUNCTION_SET
+    RegisterCommand(false, SET_COMMAND, NULL);
+    node = FindCommand(SET_COMMAND, NULL);
+    RegisterParameter(node, SetLed, STR_LED, NULL);
+    RegisterParameter(node, SetClock, STR_CLOCK, NULL);
+    RegisterParameter(node, SetBell, STR_BELL, NULL);
+    RegisterParameter(node, SetWifi, STR_WIFI, NULL);
+    RegisterParameter(node, SetWifiAp, STR_WIFIAP, NULL);
+    RegisterParameter(node, SetCountDown, STR_COUNTDOWN, NULL);
+    RegisterParameter(node, SetPeriodicCloseLed, STR_LEDPERIOD, NULL);
+#endif
+#if ENABLE_FUNCTION_MQTT
+    RegisterCommand(false, MQTT_COMMAND, NULL);
+    node = FindCommand(MQTT_COMMAND, NULL);
+    RegisterParameter(node, UserMqttInit, STR_INIT, NULL);
+    RegisterParameter(node, UserMqttConnect, STR_CONNECT, NULL);
+    RegisterParameter(node, UserMqttDisconnect, STR_DISCONNECT, NULL);
+    RegisterParameter(node, UserMqttPublish, STR_PUBLISH, NULL);
+    RegisterParameter(node, UserMqttSubscribe, STR_SUBSCRIBE, NULL);
+    RegisterParameter(node, UserMqttUnsubscribe, STR_UNSUBSCRIBE, NULL);
+    RegisterParameter(node, UserMqttDeinit, STR_DEINIT, NULL);
+    RegisterParameter(node, UserMqttTest, STR_TEST, NULL);
+#endif
     xTaskCreatePinnedToCore(read_command, "UART-Debug_task", 4096, NULL, 6, NULL, 1);
     return ESP_OK;
 
