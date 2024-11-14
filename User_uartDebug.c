@@ -22,7 +22,7 @@
 #include "CommandParse.h"
 #include "User_uartDebug.h"
 
-#define COMMAND_LENGTH (128)
+#define COMMAND_LENGTH COMMAND_SIZE
 #define DEFAULT_UART_CH UART_NUM_0
 #define UART_RX_BUF_SIZE (1024)
 
@@ -83,12 +83,12 @@
 #define ENABLE_FUNCTION_HELP 1
 #define ENABLE_FUNCTION_CHECK 1
 #define ENABLE_FUNCTION_SET 1
-#define ENABLE_FUNCTION_MQTT 1
+#define ENABLE_FUNCTION_MQTT 0
 #define ENABLE_FUNCTION_MODE 1
 
 static const char *TAG = "User_Debug";
 static char command[COMMAND_LENGTH] = {0};
-static unsigned char handleFlag = false; // 当前输入的命令是否有被处理
+
 
 #define WIFI_STRING_FROMAT_DESCRIPTION "ssid:YOUR_SSID,\
 password:YOUR_PASSWORD,\
@@ -600,7 +600,7 @@ static char *UserWordParse(const char *str, const char *CMD)
 }
 
 
-
+#if ENABLE_FUNCTION_CHECK
 static void CheckTime(void *arg)
 {
     My_tm time;
@@ -692,6 +692,7 @@ static void CheckStatus(void *arg)
 
     ReadPeriodicCloseLedTargetTime(&hour, &minute, &second);
     ESP_LOGI(TAG, "set periodic close LED target time: %u:%u:%u", hour, minute, second);
+    ESP_LOGI(__func__, "%p", CheckStatus);
 }
 static void CheckPeriodicCloseLed(void *arg)
 {
@@ -699,6 +700,8 @@ static void CheckPeriodicCloseLed(void *arg)
     ReadPeriodicCloseLedTargetTime(&hour, &minute, &second);
     ESP_LOGI(TAG, "set periodic close LED target time: %u:%u:%u", hour, minute, second);
 }
+#endif
+#if ENABLE_FUNCTION_SET
 static void SetClock(void *arg)
 {
     int hour, minute, second;
@@ -827,11 +830,13 @@ static void SetCountDown(void *arg)
              temp / 3600ULL, (temp % 3600ULL) / 60ULL, temp % 60ULL,
              time.hour, time.minute, time.second);
 }
+#endif
 static void UpdateNtp(void *arg)
 {
     uint32_t task_mark = SNTP_SYNC;
     xQueueSend(GetMainEventQueueHandle(), &task_mark, 0);
 }
+#if ENABLE_FUNCTION_MQTT
 static void UserMqttInit(void *arg)
 {
     if (GetMQTTinitReady() == false)
@@ -932,6 +937,8 @@ static void UserMqttTest(void *arg)
     }
     return;
 }
+#endif
+#if ENABLE_FUNCTION_MODE
 static void ModeClock(void *arg)
 {
 CLOCK_MODE:
@@ -947,7 +954,9 @@ STOPWATCH_MODE:
     ESP_LOGI(TAG, "Now is stopwatch Mode");
     SetStopwatch_record();
 }
+#endif
 
+#if ENABLE_FUNCTION_HELP
 /// @brief 命令行帮助信息
 /// @param
 static void HelpDescription(void)
@@ -1007,12 +1016,12 @@ static void HelpDescription(void)
     printf("        ( The parameters here are user-defined strings. )\n");
     PRINT_CUT_UP_LINE(18);
 }
-
+#endif
 
 
 static void read_command(void *arg)
 {
-    //char cmdStr[COMMAND_SIZE] = {0};
+    size_t len = 0;
     esp_err_t ret = 0;
     while (1)
     {
@@ -1020,19 +1029,20 @@ static void read_command(void *arg)
         ret = uart_read_bytes(DEFAULT_UART_CH,
                               (void *)command,
                               COMMAND_LENGTH,
-                              1000 / portTICK_PERIOD_MS);
-#if 0
-        if (ret)
+                              200 / portTICK_PERIOD_MS);
+                              #if 0
+if(ret)
         {
-            // ESP_LOGI(TAG, "read strings: <%s>", command);
-            ParametersParseOfCommand();
+            len = strlen(command);
+            memset(command + len, 0, COMMAND_LENGTH - len);
         }
-        else
-            vTaskDelay(1);
 #endif
         (ret)
             ? CommandParse(command)
             : vTaskDelay(1);
+#if 0
+        ESP_LOGI(TAG, "LEN:%u, DATA:%s", strlen(command), command);
+#endif;
     }
 }
 
@@ -1072,52 +1082,54 @@ esp_err_t uart_debug_init(void)
     if (err)
         goto exit;
 
+    defaultRegCmd_init();
+
 #if ENABLE_FUNCTION_MODE
     RegisterCommand(false, MODE_COMMAND, NULL);
     node = FindCommand(MODE_COMMAND, NULL);
-    RegisterParameter(node, ModeClock, STR_CLOCK, NULL);
-    RegisterParameter(node, ModeStopwatch, STR_STOPWATCH, NULL);
+    RegisterParameter(node, ModeClock, 1, STR_CLOCK, NULL);
+    RegisterParameter(node, ModeStopwatch, 1, STR_STOPWATCH, NULL);
 #endif
 #if ENABLE_FUNCTION_HELP
     RegisterCommand(false, HELP_COMMAND, NULL);
     node = FindCommand(HELP_COMMAND, NULL);
-    RegisterParameter(node, HelpDescription, STR_DESC, NULL);
+    RegisterParameter(node, HelpDescription, 1, STR_DESC, NULL);
 #endif
 #if ENABLE_FUNCTION_CHECK
     RegisterCommand(false, CHECK_COMMAND, NULL);
     node = FindCommand(CHECK_COMMAND, NULL);
-    RegisterParameter(node, CheckTime, STR_TIME, NULL);
-    RegisterParameter(node, CheckClock, STR_CLOCK, NULL);
-    RegisterParameter(node, CheckHeap, STR_HEAP, NULL);
-    RegisterParameter(node, CheckChip, STR_CHIP, NULL);
-    RegisterParameter(node, CheckWifi, STR_WIFI, NULL);
-    RegisterParameter(node, CheckWifisacn, STR_WIFISCAN, NULL);
-    RegisterParameter(node, CheakRestartReason, STR_RESTART, NULL);
-    RegisterParameter(node, CheckStopwatch_, STR_STOPWATCH, NULL);
-    RegisterParameter(node, CheckStatus, STR_STATUS, NULL);
+    RegisterParameter(node, CheckTime, 1, STR_TIME, NULL);
+    RegisterParameter(node, CheckClock, 1, STR_CLOCK, NULL);
+    RegisterParameter(node, CheckHeap, 1, STR_HEAP, NULL);
+    RegisterParameter(node, CheckChip, 1, STR_CHIP, NULL);
+    RegisterParameter(node, CheckWifi, 1, STR_WIFI, NULL);
+    RegisterParameter(node, CheckWifisacn, 1, STR_WIFISCAN, NULL);
+    RegisterParameter(node, CheakRestartReason, 1, STR_RESTART, NULL);
+    RegisterParameter(node, CheckStopwatch_, 1, STR_STOPWATCH, NULL);
+    RegisterParameter(node, CheckStatus, 1, STR_STATUS, NULL);
 #endif
 #if ENABLE_FUNCTION_SET
     RegisterCommand(false, SET_COMMAND, NULL);
     node = FindCommand(SET_COMMAND, NULL);
-    RegisterParameter(node, SetLed, STR_LED, NULL);
-    RegisterParameter(node, SetClock, STR_CLOCK, NULL);
-    RegisterParameter(node, SetBell, STR_BELL, NULL);
-    RegisterParameter(node, SetWifi, STR_WIFI, NULL);
-    RegisterParameter(node, SetWifiAp, STR_WIFIAP, NULL);
-    RegisterParameter(node, SetCountDown, STR_COUNTDOWN, NULL);
-    RegisterParameter(node, SetPeriodicCloseLed, STR_LEDPERIOD, NULL);
+    RegisterParameter(node, SetLed, 1, STR_LED, NULL);
+    RegisterParameter(node, SetClock, 1, STR_CLOCK, NULL);
+    RegisterParameter(node, SetBell, 1, STR_BELL, NULL);
+    RegisterParameter(node, SetWifi, 1, STR_WIFI, NULL);
+    RegisterParameter(node, SetWifiAp, 1, STR_WIFIAP, NULL);
+    RegisterParameter(node, SetCountDown, 1, STR_COUNTDOWN, NULL);
+    RegisterParameter(node, SetPeriodicCloseLed, 1, STR_LEDPERIOD, NULL);
 #endif
 #if ENABLE_FUNCTION_MQTT
     RegisterCommand(false, MQTT_COMMAND, NULL);
     node = FindCommand(MQTT_COMMAND, NULL);
-    RegisterParameter(node, UserMqttInit, STR_INIT, NULL);
-    RegisterParameter(node, UserMqttConnect, STR_CONNECT, NULL);
-    RegisterParameter(node, UserMqttDisconnect, STR_DISCONNECT, NULL);
-    RegisterParameter(node, UserMqttPublish, STR_PUBLISH, NULL);
-    RegisterParameter(node, UserMqttSubscribe, STR_SUBSCRIBE, NULL);
-    RegisterParameter(node, UserMqttUnsubscribe, STR_UNSUBSCRIBE, NULL);
-    RegisterParameter(node, UserMqttDeinit, STR_DEINIT, NULL);
-    RegisterParameter(node, UserMqttTest, STR_TEST, NULL);
+    RegisterParameter(node, UserMqttInit, 1, STR_INIT, NULL);
+    RegisterParameter(node, UserMqttConnect, 1, STR_CONNECT, NULL);
+    RegisterParameter(node, UserMqttDisconnect, 1, STR_DISCONNECT, NULL);
+    RegisterParameter(node, UserMqttPublish, 1, STR_PUBLISH, NULL);
+    RegisterParameter(node, UserMqttSubscribe, 1, STR_SUBSCRIBE, NULL);
+    RegisterParameter(node, UserMqttUnsubscribe, 1, STR_UNSUBSCRIBE, NULL);
+    RegisterParameter(node, UserMqttDeinit, 1, STR_DEINIT, NULL);
+    RegisterParameter(node, UserMqttTest, 1, STR_TEST, NULL);
 #endif
     xTaskCreatePinnedToCore(read_command, "UART-Debug_task", 4096, NULL, 6, NULL, 1);
     return ESP_OK;
