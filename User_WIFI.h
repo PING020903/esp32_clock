@@ -9,8 +9,10 @@
 
 #define ESP_WIFI_AP_SSID "ESP32_clock"
 #define ESP_WIFI_CHANNEL (1)
-#define ESP_WIFI_AP_PASSWD "ESP32_clock"
+#define ESP_WIFI_AP_PASSWD ESP_WIFI_AP_SSID
 #define MAX_STA_CONN 1
+
+#define WIFI_CONNETED_AUTO_ENABLE_HTTP_SERVER 1
 
 /********select wifi mode define********/
 #define CONFIG_ESP_WPA3_SAE_PWE_HUNT_AND_PECK 1
@@ -61,12 +63,27 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
-esp_err_t Show_Wifi_connectionInfo_sta(void);
+esp_err_t Show_Wifi_Info(void);
 
 void User_WIFI_Init(void);
 
+esp_err_t User_WIFI_disable_sta(void);
+
 esp_err_t User_WIFI_changeConnection_sta(void);
 
+esp_err_t User_WIFI_enable_AP(const char *ssid, const char *passwd,
+                              size_t ssid_len);
+
+esp_err_t User_WIFI_disable_AP(void);
+
+esp_err_t show_wifi_list(void);
+
 const char *GetConnect_AP_info(void);
+
+int GetCurrentWifiMode(void);
+
+cJSON *GetWifiInfo_JSON(void);
+
+uint16_t GetWifiConnectStatus(void);
 
 #endif

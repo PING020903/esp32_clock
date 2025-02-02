@@ -35,10 +35,6 @@ time_t GetTimestamp(void);
 
 void get_time_from_timer_v2(My_tm *my_tm);
 
-void update_clock_timer_tm(void);
-
-void get_time_from_nvs(My_tm *my_tm);
-
 uint64_t User_clock(void);
 
 esp_err_t fetch_and_store_time_in_nvs(void *args);
@@ -47,6 +43,11 @@ esp_err_t update_time_from_sntp(void);
 
 void User_SNTP_update_time(void);
 
+/// @brief NTP 是否就绪
+/// @param
+/// @return OK:true 1; FAIL:false 0;
 int UserNTP_ready(void);
+
+cJSON *GetTimerInfo_JSON(void);
 
 #endif

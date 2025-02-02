@@ -1,6 +1,7 @@
 #ifndef __COMMAND_PARSE_H__
 #define __COMMAND_PARSE_H__
 
+#define ENABLE_REG 1
 
 #include <stdbool.h>
 
@@ -30,7 +31,7 @@
 
 #define MAX_COMMAND 16
 #define MAX_PARAMETER 16
-#define COMMAND_SIZE 128
+#define COMMAND_SIZE 256 // 需注意, 要与缓冲区长度一致, 不然会读取到脏字符
 
 #define GET_RAW_STRING 0 // 是否获得原始字符串
 
@@ -48,8 +49,7 @@ typedef struct {
     void* prev;// 上一节点
     void* next;// 下一节点
     bool isWch : 1; // 该命令是否使用宽字符
-    char command[MAX_COMMAND];// 命令字符串( 英文小写 )
-    wchar_t command_w[MAX_COMMAND];// 命令字符串( 宽字符, 英文小写 )
+    wchar_t command_string[MAX_COMMAND];// 命令字符串
     void* ParameterNode_head;// 该命令下的参数
 }command_node;// 命令节点
 
@@ -57,9 +57,8 @@ typedef struct {
 typedef struct {
     void* prev;// 上一节点
     void* next;// 下一节点
-    bool isRawStr;// 传递参数的形式是否为原字符串
-    char parameter[MAX_PARAMETER];// 参数字符串
-    wchar_t parameter_w[MAX_PARAMETER];// 参数字符串( 宽字符 )
+    bool isRawStr : 1;// 传递参数的形式是否为原字符串
+    wchar_t parameter_string[MAX_PARAMETER];// 参数字符串
     void* handlerArg;// handler 的参数
     ParameterHandler handler;// 参数处理
 }parameter_node;// 参数节点
@@ -74,20 +73,23 @@ typedef struct {
     size_t len;
 }userString;// 用户字符串
 
+typedef struct{
+    void *req;
+    char *data;
+} User_httpd_data;
+
 void showParam(command_node* CmdNode);
 
 void showList(void);
 
 command_node* FindCommand(const char* command, const wchar_t* commandW);
 
-int RegisterCommand(const bool isWch,
-                    const char* command,
-                    const wchar_t* commandW);
+int RegisterCommand(const bool isWch, const void* cmdStr);
 
 
 int unRegisterAllParameters(command_node* node);
 
-int unRegisterCommand(char* command, wchar_t* commandW);
+int unRegisterCommand(const char* command, const wchar_t* commandW);
 
 int updateCommand(char* oldCommand, wchar_t* oldCommandW,
                   char* newCommand, wchar_t* newCommandW);
@@ -97,23 +99,21 @@ int unRegisterAllCommand(void);
 int RegisterParameter(command_node* node,
                       ParameterHandler hook,
                       const bool isRaw,
-                      const char* param,
-                      const wchar_t* paramW);
+                      const void* paramStr);
 
 int unRegisterParameter(command_node* node,
-                        const char* param,
-                        const wchar_t* paramW);
+                        const void* paramStr);
 
 int updateParameter(const command_node* CmdNode, ParameterHandler hook,
-                    const bool isRaw,
-                    const char* oldParam, const wchar_t* oldParamW,
-                    const char* newParam, const wchar_t* newParamW);
+                    const bool isRaw, const void* oldParam, const void* newParam);
 
 int NodeGetCommandMap(command_info** map);
 
 size_t NodeGetUserParamsCnt();
 
 int CommandParse(const char* commandString);
+
+int CommandParse_JSON_data(const char *commandString, const User_httpd_data *JSON);
 
 #ifdef WCHAR_MIN
 #ifdef WCHAR_MAX
@@ -124,6 +124,7 @@ int CommandParseW(const wchar_t* commandString);
 
 int NodeGetLastError(void);
 
+#if ENABLE_REG
 int defaultRegCmd_init(void);
-
+#endif
 #endif  // __COMMAND_PARSE_H__
