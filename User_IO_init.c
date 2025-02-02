@@ -2,15 +2,23 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
+#include "soc/soc.h"
+#include "soc/gpio_periph.h"
 #include "driver/gpio.h"
 #include "driver/gpio_filter.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+
+#include "User_main.h"
+#include "User_taskManagement.h"
 #include "sdkconfig.h"
 #include "User_IO_init.h"
 #define ISR_DEBUG 0
 #define ESP_INTR_FLAG_DEFAULT 0
 #define NOT_SUPPORTED_glitch_filter 0
+
+#define SET_BIT(SRC, BIT) (SRC |= (1 << BIT))
+#define CLEAR_BIT(SRC, BIT) (SRC &= ~(1 << BIT))
 
 static const char *TAG = "User_IO";
 
@@ -46,7 +54,7 @@ static void IRAM_ATTR gpio_isr_handler(void *arg)
 #endif
     uint32_t gpio_num = (uint32_t)arg;
 
-    // 从中断任务中发送数据到任务队列, 从中断中使用比较安全
+    // 从中断任务中发送数据到任务队列
     xQueueSendFromISR(gpioISR_evt_queue, &gpio_num, NULL);
     return;
 }
@@ -65,12 +73,6 @@ static void gpio_isr_handler_receive_task(void *arg)
                    __func__, io_num, gpio_get_level(io_num), handler_count);
 #endif
             clockbell_level = (uint8_t)gpio_get_level(io_num);
-#if 0
-            if (gpio_get_level(io_num))
-                clockbell_level = true;
-            else
-                clockbell_level = false;
-#endif
         }
     }
 }
@@ -83,44 +85,59 @@ static void gpio_isr_handler_receive_task(void *arg)
  * @note 段位开关, 0打开, 1关闭
  *
  */
-inline void User_LED_on(const bool level, const int IO_num)
+#if (LED_DRIVER_VERSION_MAJOR != LED_TASK_VERSION)
+ISR_SAFE
+#endif
+static inline void User_LED_on(const bool level, const int IO_num)
 {
-    // ESP_LOGI(TAG, "IO_num:%c, level:%d", IO_num, level);
-    esp_err_t err = ESP_OK;
+    uint32_t IO = REG_READ(GPIO_OUT_REG);
 
     switch (IO_num)
     {
     case 'A':
-        err = gpio_set_level(GPIO_NUM_17, level); // A段
+        (level) ? SET_BIT(IO, GPIO_NUM_17) : CLEAR_BIT(IO, GPIO_NUM_17);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_17, level); // A段
         break;
     case 'B':
-        err = gpio_set_level(GPIO_NUM_15, level); // B段
+        (level) ? SET_BIT(IO, GPIO_NUM_15) : CLEAR_BIT(IO, GPIO_NUM_15);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_15, level); // B段
         break;
     case 'C':
-        err = gpio_set_level(GPIO_NUM_27, level); // C段
+        (level) ? SET_BIT(IO, GPIO_NUM_27) : CLEAR_BIT(IO, GPIO_NUM_27);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_27, level); // C段
         break;
     case 'D':
-        err = gpio_set_level(GPIO_NUM_12, level); // D段
+        (level) ? SET_BIT(IO, GPIO_NUM_12) : CLEAR_BIT(IO, GPIO_NUM_12);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_12, level); // D段
         break;
     case 'E':
-        err = gpio_set_level(GPIO_NUM_13, level); // E段
+        (level) ? SET_BIT(IO, GPIO_NUM_13) : CLEAR_BIT(IO, GPIO_NUM_13);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_13, level); // E段
         break;
     case 'F':
-        err = gpio_set_level(GPIO_NUM_16, level); // F段
+        (level) ? SET_BIT(IO, GPIO_NUM_16) : CLEAR_BIT(IO, GPIO_NUM_16);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_16, level); // F段
         break;
     case 'G':
-        err = gpio_set_level(GPIO_NUM_26, level); // G段
+        (level) ? SET_BIT(IO, GPIO_NUM_26) : CLEAR_BIT(IO, GPIO_NUM_26);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_26, level); // G段
         break;
     case 'H':
-        err = gpio_set_level(GPIO_NUM_14, level); // dp段
+        (level) ? SET_BIT(IO, GPIO_NUM_14) : CLEAR_BIT(IO, GPIO_NUM_14);
+        REG_WRITE(GPIO_OUT_REG, IO);
+        // err = gpio_set_level(GPIO_NUM_14, level); // dp段
         break;
     default:
         ESP_LOGE(__func__, "LED IO_num error");
         break;
     }
-    if (err != ESP_OK)
-        ESP_LOGE(__func__, "gpio_set_level error");
-
     return;
 }
 
@@ -131,33 +148,63 @@ inline void User_LED_on(const bool level, const int IO_num)
  * @param  level 0, 1
  *
  */
-inline void User_LED_digital_on(const bool level, const int IO_num)
+#if (LED_DRIVER_VERSION_MAJOR != LED_TASK_VERSION)
+ISR_SAFE
+#endif
+static inline void User_LED_digital_on(const bool level, const int IO_num)
 {
-    esp_err_t err = ESP_OK;
-
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+    uint32_t IO = REG_READ(GPIO_OUT_REG);
+    static const uint32_t gpio_33 = (GPIO_NUM_33 - GPIO_NUM_32);
+#endif
     switch (IO_num)
     {
     case 0:
-        err = gpio_set_level(GPIO_NUM_33, level); // 中间两点
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+        IO = REG_READ(GPIO_OUT1_REG);
+        (level) ? SET_BIT(IO, gpio_33) : CLEAR_BIT(IO, gpio_33);
+        REG_WRITE(GPIO_OUT1_REG, IO << gpio_33);
+#else
+        gpio_set_level(GPIO_NUM_33, level); // 中间两点
+#endif
         break;
     case 1:
-        err = gpio_set_level(GPIO_NUM_5, level); // digital_1
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+        (level) ? SET_BIT(IO, GPIO_NUM_5) : CLEAR_BIT(IO, GPIO_NUM_5);
+        REG_WRITE(GPIO_OUT_REG, IO << GPIO_NUM_5);
+#else
+        gpio_set_level(GPIO_NUM_5, level); // digital_1
+#endif
         break;
     case 2:
-        err = gpio_set_level(GPIO_NUM_4, level); // digital_2
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+        (level) ? SET_BIT(IO, GPIO_NUM_4) : CLEAR_BIT(IO, GPIO_NUM_4);
+        REG_WRITE(GPIO_OUT_REG, IO << GPIO_NUM_4);
+#else
+        gpio_set_level(GPIO_NUM_4, level); // digital_2
+#endif
         break;
     case 3:
-        err = gpio_set_level(GPIO_NUM_2, level); // digital_3
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+        (level) ? SET_BIT(IO, GPIO_NUM_2) : CLEAR_BIT(IO, GPIO_NUM_2);
+        REG_WRITE(GPIO_OUT_REG, IO << GPIO_NUM_2);
+#else
+        gpio_set_level(GPIO_NUM_2, level); // digital_3
+#endif
         break;
     case 4:
-        err = gpio_set_level(GPIO_NUM_25, level); // digital_4
+#if !CONFIG_GPIO_CTRL_FUNC_IN_IRAM
+        (level) ? SET_BIT(IO, GPIO_NUM_25) : CLEAR_BIT(IO, GPIO_NUM_25);
+        REG_WRITE(GPIO_OUT_REG, IO << GPIO_NUM_25);
+#else
+        gpio_set_level(GPIO_NUM_25, level); // digital_4
+#endif
         break;
     default:
         ESP_LOGE(TAG, "digital IO_num error");
         break;
     }
-    if (err != ESP_OK)
-        ESP_LOGE(__func__, " SET IO level ERROR");
+
     return;
 }
 
@@ -177,9 +224,33 @@ void User_gpio_init(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 配置 GPIO32且使用ESP_ERROR检查
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // bell
+    ESP_ERROR_CHECK(gpio_set_drive_capability(GPIO_NUM_32, GPIO_DRIVE_CAP_DEFAULT));
 
+    My_GPIO_structture.pin_bit_mask = (1ULL << 5);
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG1)
+    ESP_ERROR_CHECK(gpio_set_drive_capability(GPIO_NUM_5, GPIO_DRIVE_CAP_DEFAULT));
+
+    My_GPIO_structture.pin_bit_mask = (1ULL << 4);
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG2)
+    ESP_ERROR_CHECK(gpio_set_drive_capability(GPIO_NUM_4, GPIO_DRIVE_CAP_DEFAULT));
+
+    My_GPIO_structture.pin_bit_mask = (1ULL << 2);
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG3)
+    ESP_ERROR_CHECK(gpio_set_drive_capability(GPIO_NUM_2, GPIO_DRIVE_CAP_DEFAULT));
+
+    My_GPIO_structture.pin_bit_mask = (1ULL << 25);
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG4)
+    ESP_ERROR_CHECK(gpio_set_drive_capability(GPIO_NUM_25, GPIO_DRIVE_CAP_DEFAULT));
+
+    My_GPIO_structture.pin_bit_mask = (1ULL << 33);
+    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(中间两点)
+
+
+    My_GPIO_structture.mode = GPIO_MODE_OUTPUT;
     My_GPIO_structture.pin_bit_mask = (1ULL << 17);
+    My_GPIO_structture.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    My_GPIO_structture.pull_up_en = GPIO_PULLUP_DISABLE;
     ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(A段)
 
     My_GPIO_structture.pin_bit_mask = (1ULL << 15);
@@ -202,21 +273,7 @@ void User_gpio_init(void)
 
     My_GPIO_structture.pin_bit_mask = (1ULL << 14);
     ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DP段)
-
-    My_GPIO_structture.pin_bit_mask = (1ULL << 5);
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG1)
-
-    My_GPIO_structture.pin_bit_mask = (1ULL << 4);
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG2)
-
-    My_GPIO_structture.pin_bit_mask = (1ULL << 2);
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG3)
-
-    My_GPIO_structture.pin_bit_mask = (1ULL << 25);
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(DIG4)
-
-    My_GPIO_structture.pin_bit_mask = (1ULL << 33);
-    ESP_ERROR_CHECK(gpio_config(&My_GPIO_structture)); // 数码管(中间两点)
+    
 
 #if NOT_SUPPORTED_glitch_filter
     // 配置GPIO毛刺过滤器结构体
@@ -253,11 +310,11 @@ void User_gpio_init(void)
 
     // start gpio_isr task, 创建gpio中断处理接收任务
     xTaskCreatePinnedToCore(gpio_isr_handler_receive_task,
-                            "gpio_isr_handler_task",
-                            2048,
+                            GPIO_ISR_TASK_NAME,
+                            GPIO_ISR_TASK_STACK_SIZE,
                             NULL,
-                            10,
-                            NULL,
+                            GPIO_ISR_TASK_PRIORITY,
+                            User_NewTask(),
                             0);
 
     clockbell_level = gpio_get_level(GPIO_NUM_35);
@@ -283,10 +340,29 @@ int read_user_gpio(void)
  * @param  level 0(low), 1(high)
  *
  */
-void set_user_bell(const int level)
+#if (BELL_DRIVER_VERSION_MAJOR == BELL_TICK_VERSION)
+static uint32_t BellIOControl = true;
+/// @brief 在TICK模式下对 BELL_IO 控制开关
+/// @param
+/// @note 只有两种状态, 每使用一次, 状态翻转
+ISR_SAFE uint32_t BellControlOFFON(void)
 {
-    gpio_set_level(GPIO_NUM_32, (level) ? true : false);
-    return;
+    return BellIOControl = !BellIOControl;
+}
+ISR_SAFE
+#endif
+esp_err_t set_user_bell(const int level)
+{
+#if (BELL_DRIVER_VERSION_MAJOR == BELL_TICK_VERSION)
+    if(BellIOControl == false)
+    {
+        // 暂停对 BELL_IO 的控制
+        gpio_set_level(GPIO_NUM_32, false);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+        
+#endif
+    return gpio_set_level(GPIO_NUM_32, (level) ? true : false);
 }
 
 /**
@@ -305,6 +381,9 @@ void show_LED_status(void)
 
 /// @brief 关闭所有LED
 /// @param
+#if (LED_DRIVER_VERSION_MAJOR != LED_TASK_VERSION)
+ISR_SAFE
+#endif
 void User_LEDall_off(void)
 {
 
@@ -326,13 +405,12 @@ void User_LEDall_off(void)
     User_LED_digital_on(0, 4);
 }
 
-/// @brief 显示数字
-/// @param num 需要被显示的数字
-/// @param digit_num 需要被显示数码管的编号
-/// @note 只打开了digital IO, 并未做关闭处理
+#if (LED_DRIVER_VERSION_MAJOR != LED_TASK_VERSION)
+ISR_SAFE
+#endif
 void User_LEDshow_num(const int num, const unsigned int digit_num)
 {
-    if (digit_num == 0 || digit_num > 4)
+    if (digit_num > 4)
     {
         ESP_LOGW(TAG, "the digit_num:%u is not a digital tube", digit_num);
         return;
@@ -340,6 +418,8 @@ void User_LEDshow_num(const int num, const unsigned int digit_num)
 
     User_LEDall_off();
     User_LED_digital_on(1, digit_num);
+    if(digit_num == 0)
+        (num) ? User_LED_digital_on(1, digit_num) : User_LED_digital_on(0, digit_num);
     switch (num)
     {
     case 0:

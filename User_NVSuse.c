@@ -2,6 +2,7 @@
 #include "nvs_flash.h" // nvs相关头文件
 #include "esp_wifi_types.h"
 #include "esp_log.h"
+
 #include "User_NVSuse.h"
 
 #define DEFAULT_NAMESPACE "storage"
@@ -22,7 +23,9 @@ static uint64_t countdown = 0;
 
 static nvs_handle_t nvs_handle_wifi = 0,
                     nvs_handle_ntp = 0,
-                    nvs_handle_closeLed = 0;
+                    nvs_handle_closeLed = 0,
+                    nvs_handle_powerTime = 0,
+                    nvs_handle_bellDays = 0;
 static char connect_ssid[CONNECT_SSID_LEN] = {0};
 static char connect_passwd[CONNECT_PASSWD_LEN] = {0};
 static int32_t connect_auth_type = WIFI_AUTH_OPEN;
@@ -37,6 +40,15 @@ static int32_t connect_auth_type = WIFI_AUTH_OPEN;
 #define NVS_SPACE_KEY_CLOSE_LED_HOUR "OffLedHour"
 #define NVS_SPACE_KEY_CLOSE_LED_MINUTE "OffLedMinute"
 #define NVS_SPACE_KEY_CLOSE_LED_SECOND "OffLedSecond"
+
+#define NVS_SPACE_KEY_POWER_TIME_YEAR "PowerTimeY"
+#define NVS_SPACE_KEY_POWER_TIME_MONTH "PowerTimeMon"
+#define NVS_SPACE_KEY_POWER_TIME_DAY "PowerTimeD"
+#define NVS_SPACE_KEY_POWER_TIME_HOUR "PowerTimeH"
+#define NVS_SPACE_KEY_POWER_TIME_MINUTE "PowerTimeM"
+#define NVS_SPACE_KEY_POWER_TIME_SECOND "PowerTimeS"
+
+#define NVS_SPACE_KEY_BELL_DAYS "bell_days"
 
 static uint8_t closeLedHour = 0,
                closeLedMinute = 0,
@@ -203,37 +215,15 @@ int32_t GetConnectWIFI_AuthType(void)
     return connect_auth_type;
 }
 
-/// @brief 设置连接信息
-/// @param ssid
-/// @param passwd
-/// @param auth_type
-/// @return OK: ESP_OK, ERROR: ESP_ERR_INVALID_ARG
-esp_err_t SetConnectionInfo(const char *ssid,
-                            const char *passwd,
-                            int32_t auth_type)
-{
-    if (ssid == NULL)
-        return ESP_ERR_INVALID_ARG;
-
-    strcpy(connect_ssid, ssid);
-    strcpy(connect_passwd, passwd);
-
-    if (passwd == NULL)
-        connect_auth_type = WIFI_AUTH_OPEN;
-
-    connect_auth_type = auth_type;
-    return ESP_OK;
-}
-
 /// @brief 读取WIFI连接信息
 /// @param
 /// @return
 esp_err_t Read_WIFIconnectionInfo_sta(void)
 {
     const char *warn_str = "(Read)string of key";
-    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READONLY, &nvs_handle_wifi);
     size_t passwd_length = CONNECT_PASSWD_LEN;
     size_t ssid_length = CONNECT_SSID_LEN;
+    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READONLY, &nvs_handle_wifi);
     if (err)
     {
         ESP_LOGE(__func__, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
@@ -320,6 +310,126 @@ FUNC_EXIT:
     return err;
 }
 
+/// @brief 设置连接信息
+/// @param ssid
+/// @param passwd
+/// @param auth_type
+/// @return OK: ESP_OK, ERROR: ESP_ERR_INVALID_ARG
+esp_err_t SetConnectionInfo(const char *ssid,
+                            const char *passwd,
+                            int32_t auth_type)
+{
+    if (ssid == NULL)
+        return ESP_ERR_INVALID_ARG;
+
+    memcpy(connect_ssid, ssid, CONNECT_SSID_LEN);
+
+    (passwd != NULL)
+        ? memcpy(connect_passwd, passwd, CONNECT_PASSWD_LEN)
+        : memset(connect_passwd, 0, CONNECT_SSID_LEN);
+
+    if (passwd == NULL)
+        connect_auth_type = WIFI_AUTH_OPEN;
+
+    connect_auth_type = auth_type;
+    return ESP_OK;
+}
+
+/// @brief 写入上电时间信息
+/// @param year
+/// @param month
+/// @param day
+/// @param hour
+/// @param minute
+/// @param second
+/// @return OK:ESO_OK, ERROR: others
+esp_err_t Write_PowerTime(const short year, const short month, const short day,
+                          const short hour, const short minute, const short second)
+{
+    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READWRITE, &nvs_handle_powerTime);
+    if (err)
+    {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+        goto FUNC_EXIT;
+    }
+
+    /***************************************write****************************************/
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_YEAR, year);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_YEAR))
+        goto FUNC_EXIT;
+
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_MONTH, month);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_MONTH))
+        goto FUNC_EXIT;
+
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_DAY, day);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_DAY))
+        goto FUNC_EXIT;
+
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_HOUR, hour);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_HOUR))
+        goto FUNC_EXIT;
+
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_MINUTE, minute);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_MINUTE))
+        goto FUNC_EXIT;
+
+    err = nvs_set_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_SECOND, second);
+    if (User_NVSretValueParse_str(err, 0, NVS_SPACE_KEY_POWER_TIME_SECOND))
+        goto FUNC_EXIT;
+
+    ESP_LOGI(TAG, "Write power time success!");
+FUNC_EXIT:
+    nvs_close(nvs_handle_powerTime);
+    return err;
+}
+
+/// @brief 读取上电时间信息
+/// @param year
+/// @param month
+/// @param day
+/// @param hour
+/// @param minute
+/// @param second
+/// @return OK:ESP_OK, ERROR:others
+esp_err_t Read_PowerTime(short *year, short *month, short *day,
+                         short *hour, short *minute, short *second)
+{
+    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READONLY, &nvs_handle_powerTime);
+    if (err)
+    {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+        goto FUNC_EXIT;
+    }
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_YEAR, year);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_YEAR))
+        goto FUNC_EXIT;
+
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_MONTH, month);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_MONTH))
+        goto FUNC_EXIT;
+
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_DAY, day);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_DAY))
+        goto FUNC_EXIT;
+
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_HOUR, hour);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_HOUR))
+        goto FUNC_EXIT;
+
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_MINUTE, minute);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_MINUTE))
+        goto FUNC_EXIT;
+
+    err = nvs_get_i16(nvs_handle_powerTime, NVS_SPACE_KEY_POWER_TIME_SECOND, second);
+    if (User_NVSretValueParse_str(err, 1, NVS_SPACE_KEY_POWER_TIME_SECOND))
+        goto FUNC_EXIT;
+
+FUNC_EXIT:
+    nvs_close(nvs_handle_powerTime);
+    return err;
+}
+
 /// @brief 初始化NVS空间
 /// @param
 void User_NVS_Init(void)
@@ -332,26 +442,6 @@ void User_NVS_Init(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-}
-
-/// @brief 获取铃响目标时间
-/// @param target 0:hour, 1:minute, 2:second
-/// @return OK:target value, ERR:ESP_FAIL
-int GetTargetTime(const unsigned int target)
-{
-    switch (target)
-    {
-    case 0:
-        return target_hour;
-    case 1:
-        return target_minute;
-    case 2:
-        return target_second;
-
-    default:
-        break;
-    }
-    return ESP_FAIL;
 }
 
 /// @brief 从NVS获取铃响目标时间
@@ -384,10 +474,31 @@ FUNC_EXIT:
     return err;
 }
 
+/// @brief 获取铃响目标时间
+/// @param target 0:hour, 1:minute, 2:second
+/// @return OK:target value, ERR:ESP_FAIL
+int GetTargetTime(const unsigned int target)
+{
+    updateTargetClockTimeFromNVS();
+    switch (target)
+    {
+    case 0:
+        return target_hour;
+    case 1:
+        return target_minute;
+    case 2:
+        return target_second;
+
+    default:
+        break;
+    }
+    return ESP_FAIL;
+}
+
 /// @brief 将当前铃响目标时间写入NVS
 /// @param
 /// @return OK:ESP_OK, ERR:others
-esp_err_t updateTargetClockTimeToNVS(void)
+static esp_err_t updateTargetClockTimeToNVS(void)
 {
     esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READWRITE, &nvs_handle_ntp);
     if (err)
@@ -440,6 +551,7 @@ esp_err_t SetTargetTime(const int hour, const int minute, const int second)
     target_second = second;
 
     return updateTargetClockTimeToNVS();
+    ;
 }
 
 /// @brief 设置默认的铃响目标时间
@@ -474,7 +586,7 @@ esp_err_t SetPeriodicCloseLedTargetTime(const uint8_t hour,
                                         const uint8_t minute,
                                         const uint8_t second)
 {
-    if (hour > 23 || minute > 59 || second > 59)// 无符号类型, 不会有零以下的值
+    if (hour > 23 || minute > 59 || second > 59) // 无符号类型, 不会有零以下的值
     {
         ESP_LOGW(TAG, "hour(%d) or minute(%d) error", hour, minute);
         return ESP_ERR_INVALID_ARG;
@@ -533,7 +645,6 @@ esp_err_t ReadPeriodicCloseLedTargetTime(uint8_t *hour,
         if (err)
             goto FUNC_EXIT;
     }
-    
 
 FUNC_EXIT:
     nvs_close(nvs_handle_closeLed);
@@ -541,5 +652,42 @@ FUNC_EXIT:
     *minute = closeLedMinute;
     *second = closeLedSecond;
     closeLedNvsFlag = false;
+    return err;
+}
+
+/// @brief 保存铃响days
+/// @param bellDays
+/// @return
+esp_err_t Write_BellDays(const uint8_t bellDays)
+{
+    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READWRITE, &nvs_handle_bellDays);
+    if (err)
+        goto FUNC_EXIT;
+
+    /***************************************write***************************************/
+    err = nvs_set_u8(nvs_handle_bellDays, NVS_SPACE_KEY_BELL_DAYS, bellDays);
+    if (err)
+        goto FUNC_EXIT;
+
+FUNC_EXIT:
+    nvs_close(nvs_handle_bellDays);
+    return err;
+}
+
+/// @brief 读取铃响days
+/// @param bellDays
+/// @return
+esp_err_t Read_BellDays(uint8_t *bellDays)
+{
+    esp_err_t err = nvs_open(DEFAULT_NAMESPACE, NVS_READONLY, &nvs_handle_bellDays);
+    if (err)
+        goto FUNC_EXIT;
+
+    err = nvs_get_u8(nvs_handle_bellDays, NVS_SPACE_KEY_BELL_DAYS, bellDays);
+    if (err)
+        goto FUNC_EXIT;
+
+FUNC_EXIT:
+    nvs_close(nvs_handle_bellDays);
     return err;
 }

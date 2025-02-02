@@ -48,12 +48,13 @@
 
 static const char *TAG = "User_MQTT";
 static esp_mqtt_client_handle_t client;
-static char *localIp = "120.230.164.69"; // 公网出口IP
+//static char *localIp = "120.230.164.69"; // 公网出口IP
 static char *MQTT_topicRecive = NULL;    // DATA_EVENT topic接收
 static char *MQTT_dataRecive = NULL;     // DATA_EVENT data接收
 static uint8_t mqttInitReady = false;
 static time_t DeviceSendTime = 0, DeviceRecvTime = 0;
 
+#if 0
 /// @brief 自定义的字符串拼接函数
 /// @param dest 目标字符串
 /// @param src 源字符串
@@ -91,6 +92,7 @@ UserStrcat(char *dest,
 
     return dest;
 }
+#endif
 
 /**
  * 将整数转换为字符串，格式为“(整数值)”

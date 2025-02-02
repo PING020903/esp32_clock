@@ -1,3 +1,6 @@
+#include "stdio.h"
+#include "string.h"
+#include "time.h"
 #include "esp_system.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -6,9 +9,17 @@
 #include "nvs_flash.h" // 从NVS中读取时间戳要用, 保存目标铃响时间要用
 #include "esp_sntp.h"
 #include "esp_err.h"
-#include "keep_stamp.h"
+
+#include "cJSON.h"
+#include "User_timer.h"
+#include "User_WIFI.h"
 #include "User_NVSuse.h"
+#include "User_httpServer.h"
+#include "User_main.h"
 #include "User_SNTP.h"
+
+#define DEFAULT_NAMESPACE "storage"
+#define STAMP_KEY "time_stamp"
 
 #define SNTP_INIT_PRINT 0
 #define NTP_DEBUG_LOG 0
@@ -19,80 +30,196 @@ static int err_temp[2] = {0};
 static My_tm clock_tm = {0};
 
 static uint8_t flag_show = true;
+#if (LED_DRIVER_VERSION_MAJOR != 0)
+ISR_SAFE
+#endif
 static int NtpReady = false;
+static uint8_t PowerOnce = true;
 
-static int isLeapYear(int year)
+IRAM_ATTR static void convertTimestamp(time_t timestamp, My_tm *my_tm)
 {
-    if ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)
-    {
-        return 1; // 是闰年
-    }
-    return 0; // 不是闰年
-}
-
-static void convertTimestamp(time_t timestamp, My_tm *my_tm)
-{
-    // 计算每个时间单位的秒数
-    const long secondsPerMinute = 60;
-    const long secondsPerHour = 3600;
-    const long secondsPerDay = 86400;
-    const long secondsPerYear = 31536000;
+#define DATE_DEBUG 0
+    /*
+        1970 年 1 月 1 日 00:00:00
+        1972 年系闰年
+    */
+#define secondsPerMinute 60LL               // 一分钟的秒数
+#define secondsPerHour 3600LL               // 一小时的秒数
+#define secondsPerDay 86400LL               // 一天的秒数
+#define YearDays 365LL                      // 平年天数
+#define LeapYearDays (YearDays + 1LL)       // 闰年天数
+#define fourYearDays (YearDays * 4LL + 1LL) // 四年天数
+#define LeapMonthDays 29LL                  // 闰月天数
+#define FebMonthDays 28LL                   // 一般二月月天数
+#define BigMonthDays 31LL                   // 大月天数
+#define SmallMonthDays 30LL                 // 小月天数
 
     // 调整为 UTC+8 时区
     timestamp += 8 * secondsPerHour;
 
-    // 计算年份
-    my_tm->year = 1970;
-    while (timestamp >= secondsPerYear)
+    long long temp = timestamp / secondsPerDay;        // 总天数
+    long long temp_second = timestamp % secondsPerDay; // 当天的时间秒数
+#if DATE_DEBUG
+    long long cnt = 0;
+    printf("&& days = %lld\n", temp);
+#endif
+    my_tm->hour = temp_second / secondsPerHour;
+    my_tm->minute = temp_second % secondsPerHour / secondsPerMinute;
+    my_tm->second = temp_second % secondsPerHour % secondsPerMinute;
+#if DATE_DEBUG
+    printf("&& hour = %d, minute = %d, second = %d\n", my_tm->hour, my_tm->minute, my_tm->second);
+#endif
+    if (timestamp == 0)
     {
-        int daysInYear = isLeapYear(my_tm->year) ? 366 : 365;
-        timestamp -= daysInYear * secondsPerDay;
-        (my_tm->year)++;
+        my_tm->year = 1970;
+        my_tm->month = 1;
+        my_tm->day = 1;
+        return;
     }
 
-    // 计算月份和日期
+    // 总天数减去2年天数再开始算
+    temp = temp - (YearDays * 2); // 除去1970 1971这两个年份, 从1972年开始算
+    long long a = temp / fourYearDays;
+#if DATE_DEBUG
+    printf("&& years = %lld, +%lld days\n", (a * 4) + 1970 + 2, temp % fourYearDays);
+#endif
+    my_tm->year = (a * 4) + 1970 + 2;
+    temp = temp % fourYearDays;
+
     my_tm->month = 1;
-    while (1)
+    my_tm->day = 1;
+    if (temp < 366)
     {
-        int daysInMonth;
-        switch (my_tm->month)
+        // 这里每四年, 以闰年为首, 然后到三年平年, 然后到闰年这样
+        // 这里算闰年的月份
+        // temp = temp % fourYearDays;
+#if DATE_DEBUG
+        printf("&& days = %lld\n", temp);
+#endif
+        while (1)
         {
-        case 2: // 二月
-            daysInMonth = isLeapYear(my_tm->year) ? 29 : 28;
+            switch (my_tm->month)
+            {
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+            {
+                temp -= SmallMonthDays; // 小月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |4 6 9 11|\n", ++cnt, my_tm->month);
+#endif
+                    temp += SmallMonthDays;
+                    goto out1;
+                }
+                my_tm->month++;
+            }
             break;
-        case 4:  // 四月
-        case 6:  // 六月
-        case 9:  // 九月
-        case 11: // 十一月
-            daysInMonth = 30;
+            case 2:
+            {
+                temp -= LeapMonthDays; // 二月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |2|\n", ++cnt, my_tm->month);
+#endif
+                    temp += LeapMonthDays;
+                    goto out1;
+                }
+                my_tm->month++;
+            }
             break;
-        default: // 其他月份
-            daysInMonth = 31;
+            default:
+            {
+                temp -= BigMonthDays; // 大月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |1 3 5 7 8 10|\n", ++cnt, my_tm->month);
+#endif
+                    temp += BigMonthDays;
+                    goto out1;
+                }
+                my_tm->month++;
+            }
             break;
+            }
         }
-
-        if (timestamp < daysInMonth * secondsPerDay)
-        {
-            break;
-        }
-
-        timestamp -= (daysInMonth * secondsPerDay);
-        (my_tm->month)++;
+    out1:
+        my_tm->day += temp;
     }
-
-    my_tm->day = timestamp / secondsPerDay + 1;
-    timestamp %= secondsPerDay;
-
-    // 计算小时
-    my_tm->hour = timestamp / secondsPerHour;
-    timestamp %= secondsPerHour;
-
-    // 计算分钟
-    my_tm->minute = timestamp / secondsPerMinute;
-    timestamp %= secondsPerMinute;
-
-    // 秒数
-    my_tm->second = timestamp;
+    else
+    {
+        long long tmp = temp / YearDays;
+        my_tm->year += tmp;   // 其余情况加上年数
+        temp -= LeapYearDays; // 先减去闰年
+#if DATE_DEBUG
+        printf("&& days = %lld, years = %d, tmp = %lld\n", temp, my_tm->year, tmp);
+#endif
+        temp -= ((tmp - 1) * YearDays); // 减去其余的平年
+#if DATE_DEBUG
+        printf("&& P_year days = %lld\n", temp);
+#endif
+        while (1)
+        {
+            switch (my_tm->month)
+            {
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+            {
+                temp -= SmallMonthDays; // 小月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |4 6 9 11|\n", ++cnt, my_tm->month);
+#endif
+                    temp += SmallMonthDays;
+                    goto out2;
+                }
+                my_tm->month++;
+            }
+            break;
+            case 2:
+            {
+                temp -= FebMonthDays; // 二月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |2|\n", ++cnt, my_tm->month);
+#endif
+                    temp += FebMonthDays;
+                    goto out2;
+                }
+                my_tm->month++;
+            }
+            break;
+            default:
+            {
+                temp -= BigMonthDays; // 大月
+                if (temp < 0)
+                {
+#if DATE_DEBUG
+                    printf("cnt = %lld, month = %d, |1 3 5 7 8 10|\n", ++cnt, my_tm->month);
+#endif
+                    temp += BigMonthDays;
+                    goto out2;
+                }
+                my_tm->month++;
+            }
+            break;
+            }
+        }
+    out2:
+        my_tm->day += temp;
+    }
+#if DATE_DEBUG
+    printf("&& month = %d, day = %d\n", my_tm->month, my_tm->day);
+#endif
+    return;
 }
 
 /// @brief 年月日转换星期
@@ -116,83 +243,12 @@ int GetDayOfWeek(int year, int month, int day)
     return week;
 }
 
-void UserConvertTimestamp(const int timezone, const int type,
-                          time_t timestamp, My_tm *my_tm)
-{
-    // 计算每个时间单位的秒数
-    const long secondsPerMinute = 60;
-    const long secondsPerHour = 3600;
-    const long secondsPerDay = 86400;
-    const long secondsPerYear = 31536000;
-    const long msPerSecond = 1000;
-
-    // 提取毫秒部分
-    my_tm->ms = (int)(timestamp % msPerSecond);
-    timestamp /= msPerSecond;
-
-    // 调整时区
-    timestamp += timezone * secondsPerHour;
-
-    // 计算年份
-    my_tm->year = 1970;
-    while (timestamp >= secondsPerYear)
-    {
-        int daysInYear = isLeapYear(my_tm->year) ? 366 : 365;
-        timestamp -= daysInYear * secondsPerDay;
-        (my_tm->year)++;
-    }
-
-    // 计算月份和日期
-    my_tm->month = 1;
-    while (1)
-    {
-        int daysInMonth;
-        switch (my_tm->month)
-        {
-        case 2: // 二月
-            daysInMonth = isLeapYear(my_tm->year) ? 29 : 28;
-            break;
-        case 4:  // 四月
-        case 6:  // 六月
-        case 9:  // 九月
-        case 11: // 十一月
-            daysInMonth = 30;
-            break;
-        default: // 其他月份
-            daysInMonth = 31;
-            break;
-        }
-
-        if (timestamp < daysInMonth * secondsPerDay)
-        {
-            break;
-        }
-
-        timestamp -= (daysInMonth * secondsPerDay);
-        (my_tm->month)++;
-    }
-
-    my_tm->day = timestamp / secondsPerDay + 1;
-    timestamp %= secondsPerDay;
-
-    // 计算小时
-    my_tm->hour = timestamp / secondsPerHour;
-    timestamp %= secondsPerHour;
-
-    // 计算分钟
-    my_tm->minute = timestamp / secondsPerMinute;
-    timestamp %= secondsPerMinute;
-
-    // 计算秒数
-    my_tm->second = timestamp;
-}
-
 /// @brief 获取本地时间戳
 /// @param
 /// @return
 time_t GetTimestamp(void)
 {
-    return get_User_timestamp2();
+    return GetUserTimestamp();
 }
 
 /**
@@ -201,36 +257,10 @@ time_t GetTimestamp(void)
  * @return time_t   User时间戳
  *
  */
-void get_time_from_timer_v2(My_tm *my_tm)
+ISR_SAFE void get_time_from_timer_v2(My_tm *my_tm)
 {
-    time_t now = get_User_timestamp2();
+    time_t now = GetUserTimestampISR();
     convertTimestamp(now, my_tm);
-}
-
-/**
- * @brief  更新时钟tm值
- *
- */
-void update_clock_timer_tm(void)
-{
-#if KEEP_TIMESTAMP_SOFTWARE_VERSION
-#endif
-#if KEEP_TIMESTAMP_HARDWARE_VERSION
-    time_t timestamp_temp = get_User_timestamp2();
-#endif
-    convertTimestamp(timestamp_temp, &clock_tm);
-}
-
-/**
- * @brief  从NVS获取时间戳并转换年月日
- * @note    NVS时间有时候不太准确
- *
- */
-void get_time_from_nvs(My_tm *my_tm)
-{
-    time_t timestamp;
-    time(&timestamp); // 获取本地时间戳
-    convertTimestamp(timestamp, my_tm);
 }
 
 /**
@@ -248,7 +278,7 @@ uint64_t User_clock(void)
         SetDefaultTargetClockInfo();
     }
 
-    update_clock_timer_tm();
+    convertTimestamp(GetUserTimestamp(), &clock_tm);
     target_hour = GetTargetTime(0);
     target_minute = GetTargetTime(1);
     target_second = GetTargetTime(2);
@@ -385,8 +415,8 @@ static esp_err_t obtain_time(void)
     int retry = 0;
     int sync_ret;
 
-    const int retry_count = 120;
-    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(500)) != ESP_OK &&
+    const int retry_count = 60;
+    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(1000)) != ESP_OK &&
            retry++ < retry_count)
     {
         if (retry % 20 == 0)
@@ -442,7 +472,7 @@ esp_err_t fetch_and_store_time_in_nvs(void *args)
     time(&now);
 
     // open
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    err = nvs_open(DEFAULT_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err != ESP_OK)
     {
         err_temp[1] = 1;
@@ -450,7 +480,7 @@ esp_err_t fetch_and_store_time_in_nvs(void *args)
     }
 
     // write
-    err = nvs_set_i64(my_handle, "time_stamp", now); // 写入时间戳
+    err = nvs_set_i64(my_handle, STAMP_KEY, now); // 写入时间戳
     if (err != ESP_OK)
     {
         err_temp[1] = 2;
@@ -503,8 +533,8 @@ esp_err_t update_time_from_sntp(void)
 
     int64_t time_stamp = 0;
 #if GET_TIME_FROM_NVS
-    err = nvs_get_i64(my_handle, "time_stamp", &time_stamp); // 获取时间戳
-    if (err == ESP_ERR_NVS_NOT_FOUND)                        // 这个选项一般情况是不会进入的
+    err = nvs_get_i64(my_handle, STAMP_KEY, &time_stamp); // 获取时间戳
+    if (err == ESP_ERR_NVS_NOT_FOUND)                     // 这个选项一般情况是不会进入的
     {
         ESP_LOGI(TAG, "time out found in NVS. syncing time from SNTP server.");
         if (fetch_and_store_time_in_nvs(NULL) == ESP_OK)
@@ -532,7 +562,7 @@ esp_err_t update_time_from_sntp(void)
     }
     else
     {
-        err = nvs_get_i64(my_handle, "time_stamp", &time_stamp); // 读取时间戳in nvs
+        err = nvs_get_i64(my_handle, STAMP_KEY, &time_stamp); // 读取时间戳in nvs
         if (err >= ESP_ERR_NVS_BASE)
         {
             ESP_LOGE(TAG, "error getting time from NVS");
@@ -547,12 +577,7 @@ esp_err_t update_time_from_sntp(void)
 
         settimeofday(&get_nvs_time, NULL); // 设置系统时间(超过35min的时候先会马上刷新时间)
         adjtime(&get_nvs_time, NULL);      // 平滑更新时间
-#if KEEP_TIMESTAMP_SOFTWARE_VERSION
-#endif
-#if KEEP_TIMESTAMP_HARDWARE_VERSION
-        *Set_User_timestamp() = time_stamp;
-        keep_userTimestamp_timer_ISR();
-#endif
+        Set_User_timestamp(time_stamp);
 
 #if NTP_DEBUG_LOG
         convertTimestamp(time_stamp, &clock_tm);
@@ -583,6 +608,14 @@ esp_err_t update_time_from_sntp(void)
                  temp_tm.year, temp_tm.month, temp_tm.day,
                  temp_tm.hour, temp_tm.minute, temp_tm.second,
                  GetDayOfWeek(temp_tm.year, temp_tm.month, temp_tm.day));
+
+        while (PowerOnce)
+        {
+            PowerOnce = false;
+            err = Write_PowerTime((short)(temp_tm.year), (short)(temp_tm.month),
+                                  (short)(temp_tm.day), (short)(temp_tm.hour),
+                                  (short)(temp_tm.minute), (short)(temp_tm.second));
+        }
     }
 #endif
 
@@ -659,6 +692,12 @@ err_sntp:
         if (cnt > 2)
             esp_restart();
 
+        // WiFi 未连接
+        while (GetWifiConnectStatus() & WIFI_FAIL_BIT)
+        {
+            vTaskDelay(1);
+        }
+
         retry_conut++;
         memset(err_temp, 0, sizeof(err_temp));
         ESP_LOGI(TAG, "updating time from NVS, %d", retry_conut);
@@ -680,10 +719,36 @@ err_sntp:
     return;
 }
 
-/// @brief NTP 是否就绪
-/// @param
-/// @return OK:true 1; FAIL:false 0;
+#if (LED_DRIVER_VERSION_MAJOR != 0)
+ISR_SAFE
+#endif
 int UserNTP_ready(void)
 {
     return NtpReady;
+}
+
+/// @brief 获取定时器信息(JSON)
+/// @param
+/// @return
+cJSON *GetTimerInfo_JSON(void)
+{
+    char *timerStr = "timer0";
+    char temp[18] = {0};
+    uint8_t days = 0;
+    cJSON *root = cJSON_CreateObject();
+    cJSON *timerInfo = cJSON_CreateObject();
+    cJSON_AddItemToObject(root, timerStr, timerInfo);
+
+    cJSON_AddNumberToObject(timerInfo, WEB_TIMER_NUMBER, timerStr[5] - '0');
+
+    memset(temp, 0, sizeof(temp));
+    sprintf(temp, "%d:%d:%d", GetTargetTime(0), GetTargetTime(1), GetTargetTime(2));
+    cJSON_AddStringToObject(timerInfo, WEB_TARGET_TIME, temp);
+
+    Read_BellDays(&days);
+    cJSON_AddNumberToObject(timerInfo, WEB_BELL_DAYS, days);
+
+    cJSON_AddStringToObject(timerInfo, WEB_TIMER_MODE, "periodic");
+
+    return root;
 }
