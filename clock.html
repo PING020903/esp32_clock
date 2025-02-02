@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Set clock</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+
+        #set_clock_select {
+            background-color: lightcyan;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 300px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        label[id="descDays"] {
+            color: black;
+            width: 80%;
+            text-align: left;
+            margin-bottom: 10px;
+            float: left;
+            width: 220px;
+        }
+
+        label[id="descButtons"] {
+            color: black;
+            float: left;
+            width: 100px;
+        }
+
+        input[type="time"],
+        input[type="checkbox"],
+        input[type="radio"] {
+            margin-left: 10px;
+        }
+
+        input[type="checkbox"] {
+            float: inline-start;
+        }
+
+        label input[type="checkbox"] {
+            margin-bottom: 15px;
+        }
+
+        #bottoms {
+            margin-top: 20px;
+            display: flex;
+            /* 添加flex布局 */
+            justify-content: space-between;
+            /* 添加间距 */
+            gap: 15px;
+            /* 设置按钮之间的间距 */
+        }
+
+        input[type="submit"],
+        input[type="reset"],
+        input[type="button"] {
+            background-color: greenyellow;
+            font-size: 120%;
+            width: 80px;
+            /* 设置统一宽度 */
+            height: 40px;
+            /* 设置统一高度 */
+            margin-top: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            border-radius: 10px;
+            /* 添加圆角 */
+            transition: background-color 0.3s, transform 0.2s;
+            /* 添加过渡效果 */
+        }
+
+        input[type="reset"] {
+            background-color: lightsalmon;
+            transition: background-color 0.3s, transform 0.2s;
+            /* 添加过渡效果 */
+        }
+
+        input[type="button"] {
+            background-color: lightgray;
+            margin-bottom: 20px;
+            transition: background-color 0.3s, transform 0.2s;
+            /* 添加过渡效果 */
+        }
+
+        input[type="submit"]:hover,
+        input[type="reset"]:hover,
+        input[type="button"]:hover {
+            background-color: darken(greenyellow, 20%);
+            /* 悬停时加深颜色更多 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            /* 添加阴影效果 */
+        }
+
+        input[type="reset"]:hover {
+            background-color: darken(lightsalmon, 20%);
+            /* 悬停时加深颜色更多 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            /* 添加阴影效果 */
+        }
+
+        input[type="button"]:hover {
+            background-color: darken(lightgray, 20%);
+            /* 悬停时加深颜色更多 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            /* 添加阴影效果 */
+        }
+
+        input[type="submit"]:active,
+        input[type="reset"]:active,
+        input[type="button"]:active {
+            transform: scale(0.98);
+            /* 按下时缩小按钮 */
+        }
+
+        input[type="reset"]:hover {
+            background-color: darken(lightsalmon, 10%);
+            /* 悬停时加深颜色 */
+        }
+
+        input[type="button"]:hover {
+            background-color: darken(lightgray, 10%);
+            /* 悬停时加深颜色 */
+        }
+
+        #periodic_bottom {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="set_clock_select">
+        <h2 style="color: black;">ESP32 Clock Webserver</h2>
+        <form id="set_clock_bell_table" method="post">
+            <div id="set_time">
+                <!--文本输入框-->
+                <label style="color: black; float: left;" for="bells_time">铃响时间 Bell time
+                    <input id="target_time" type="time" name="bells_time" required>
+                </label>
+            </div>
+            <div id="set_days">
+                <!--多选按钮-->
+                <!--0000 0000-->
+                <!--NULL Saturday Friday Thursday Wednesday Tuesday Monday Sunday-->
+                <h3 style="color: black; text-align: left;">选择周日至周六 select days</h3>
+
+                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                    <label><input id="Sunday" type="checkbox" name="bell_days" value="1"> 周日 Sunday</label>
+                    <label><input id="Monday" type="checkbox" name="bell_days" value="2"> 周一 Monday</label>
+                    <label><input id="Tuesday" type="checkbox" name="bell_days" value="4"> 周二 Tuesday</label>
+                    <label><input id="Wednesday" type="checkbox" name="bell_days" value="8"> 周三 Wednesday</label>
+                    <label><input id="Thursday" type="checkbox" name="bell_days" value="16"> 周四 Thursday</label>
+                    <label><input id="Friday" type="checkbox" name="bell_days" value="32"> 周五 Friday</label>
+                    <label><input id="Saturday" type="checkbox" name="bell_days" value="64"> 周六 Saturday</label>
+                </div>
+            </div>
+            <div id="set_intervals">
+                <!--单选按钮-->
+                <h3 style="color: black; float: left;">铃响模式 clock run mode</h3>
+                <div id="once_bottom">
+                    <label id="descButtons_once" for="once">once
+                        <input type="radio" name="intervals_between_bells" value="0" style="float: left;" checked>
+                    </label>
+                </div>
+                <div id="periodic_bottom">
+                    <label id="descButtons_periodic" for="periodic">periodic
+                        <input type="radio" name="intervals_between_bells" value="1" style="float: left;" checked>
+                    </label>
+                </div>
+            </div>
+            <div id="bottoms">
+                <input type="button" value="Return" onclick="window.history.back()">
+                <input type="reset" value="Reset">
+                <input type="submit" value="Set">
+            </div>
+        </form>
+        <p>tips: When successful, you will return to the previous page</p>
+        <p>成功后将返回上一页面</p>
+    </div>
+    <script>
+        document.getElementById('set_clock_bell_table').addEventListener('submit', function (event) {
+            event.preventDefault(); // 阻止表单提交
+            const uri = "/setBellEcho";
+            const hostRet = "clock_OK";
+
+            const time = document.getElementById('target_time').value;
+            console.log('Selected time:', time);
+
+            // 获取选中的单选按钮的值
+            const runModeRadios = document.querySelectorAll('input[name="intervals_between_bells"]');
+            let runMode;
+            runModeRadios.forEach(radio => {
+                if (radio.checked) {
+                    runMode = radio.value;
+                }
+            });
+            // 现在 runMode 包含了选中的单选按钮的值
+            console.log('Selected run mode:', runMode);
+
+            // 计算被选中的多选框的值的总和
+            const checkboxes = document.querySelectorAll('input[name="bell_days"]:checked');
+            let totalDays = 0;
+            checkboxes.forEach(checkbox => {
+                totalDays += parseInt(checkbox.value);
+            });
+            console.log('Selected days:', totalDays);
+
+            const JSONData = {
+                bells_time: time,
+                intervals_between_bells: runMode,
+                bell_days: totalDays
+            };
+            console.log(JSONData);
+
+            // 发送准备接收设置time的指令
+            fetch(uri, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain'
+                },
+                body: 'Ready receive httpset clock'
+            })
+                .then(response => response.text())
+                .then(data => {
+                    console.log('host return 1:', data); // 打印服务器返回的数据
+                    if (data != hostRet) {
+                        alert("set time failed");
+                        return;
+                    }
+
+                    fetch(uri, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(JSONData)
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            if (data != hostRet) {
+                                alert("set time failed");
+                                fetch(uri, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'text/plain'
+                                    },
+                                    body: 'Exit this status'
+                                })
+                                    .then(response => response.text())
+                                    .then(data => {
+                                        console.log('host return 2:', data); // 打印服务器返回的数据
+                                        if (data != hostRet) {
+                                            alert("set time failed");
+                                            return;
+                                        }
+                                    })
+                                    .catch(error => console.error('Error sending custom string:', error));
+                                return;
+                            }
+                        })
+                        .catch(error => console.error('Error sending custom string:', error));
+
+                    fetch(uri, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
+                        body: 'Exit this status'
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            console.log('host return 2:', data); // 打印服务器返回的数据
+                            if (data != hostRet) {
+                                alert("set time failed");
+                                return;
+                            }
+                            else {
+                                window.history.back();
+                            }
+                        })
+                        .catch(error => console.error('Error sending custom string:', error));
+                });
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" charset="utf-8" content="width=device-width, initial-scale=1.0" />
+    <title>Wi-Fi Connection</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+
+        #wifi_form {
+            background-color: lightcyan;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 300px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin: 15px 0;
+            box-sizing: border-box;
+        }
+
+        input[type="submit"] {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .button-container button {
+            background-color: #afaf4c;
+            color: black;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .button-container button:hover {
+            background-color: #8ca045;
+        }
+
+        .button-container button:active {
+            transform: scale(0.98);
+        }
+
+        .button-container input[type="submit"] {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .button-container input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+
+        .button-container input[type="submit"]:active {
+            background-color: #3e8e41;
+            /* 添加按下时的背景颜色 */
+            transform: scale(0.98);
+            /* 添加按下时的缩放效果 */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="wifi_form">
+        <h2 style="color: black;">ESP32 Clock Webserver</h2>
+        <h3>Connect to Wi-Fi</h3>
+        <form id="wifi_connect_form">
+            <input type="text" id="ssid" name="ssid" required placeholder="Enter SSID">
+            <input type="password" id="password" name="password" placeholder="Enter Password">
+            <div id="password_hint" style="color: red; margin-top: 5px;"></div> <!-- 新增: 密码提示信息 -->
+            <div style="text-align: left; margin-top: 10px;">
+                <input type="checkbox" id="show_password" name="show_password">
+                <label for="show_password">Show Password</label>
+            </div>
+            <div style="text-align: left; margin-top: 10px;">
+                <input type="checkbox" id="no_password" name="no_password">
+                <label for="no_password">No Password</label>
+            </div>
+            <div class="button-container">
+                <button type="button" onclick="window.history.back()">Return</button>
+                <button type="button" onclick="clearInputs()" style="background-color: lightcoral;">Clear</button>
+                <input type="submit" value="Connect">
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const apiUri = "/setBellEcho";
+        const hostRet = "clock_OK"
+        document.getElementById('wifi_connect_form').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const ssid = document.getElementById('ssid').value;
+            const password = document.getElementById('password').value;
+            const noPassword = document.getElementById('no_password').checked;
+
+            // 创建JSON对象
+            const wifiData = {
+                connectSSID: ssid,
+                connectPassword: noPassword ? "" : password
+            };
+            console.log('wifiData:', wifiData);
+
+            fetch(apiUri, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': "text/plain"
+                },
+                body: 'Ready send httpset wifiConnect'
+            })
+                .then(response => response.text())
+                .then(data => {
+                    console.log('Success:', data)
+                    if (data != hostRet) {
+                        alert("set time failed");
+                        return;
+                    }
+                    // 发送POST请求
+                    fetch(apiUri, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(wifiData)
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            console.log('Success:', data);
+                        });
+
+                    fetch(apiUri, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
+                        body: 'Exit this status'
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            console.log('host return 2:', data); // 打印服务器返回的数据
+                            if (data != hostRet) {
+                                alert("set time failed");
+                                return;
+                            }
+                        })
+                        .catch(error => console.error('Error sending custom string:', error));
+                });
+        });
+
+        // 新增: 显示/隐藏密码功能
+        document.getElementById('show_password').addEventListener('change', function () {
+            const passwordInput = document.getElementById('password');
+            if (this.checked) {
+                passwordInput.type = 'text';
+            } else {
+                passwordInput.type = 'password';
+            }
+        });
+
+        // 新增: 清空输入框功能
+        function clearInputs() {
+            document.getElementById('ssid').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('no_password').checked = false;
+        }
+
+        // 新增: 监听密码输入框的字符数
+        document.getElementById('password').addEventListener('input', function () {
+            const password = this.value;
+            const passwordHint = document.getElementById('password_hint');
+            if (!document.getElementById('no_password').checked && password.length < 8 && password.length > 0) {
+                passwordHint.textContent = "Password must be at least 8 characters long. (密码不少于8字符)";
+            } else {
+                passwordHint.textContent = ""; // 清空提示信息
+            }
+        });
+
+        // 新增: 监听是否需要密码的勾选框
+        document.getElementById('no_password').addEventListener('change', function () {
+            const passwordInput = document.getElementById('password');
+            const passwordHint = document.getElementById('password_hint');
+            if (this.checked) {
+                passwordInput.value = '';
+                passwordHint.textContent = "";
+                passwordInput.required = false;
+            } else {
+                passwordInput.required = true;
+            }
+        });
+    </script>
+</body>
+
+</html>

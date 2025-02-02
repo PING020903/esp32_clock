@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" charset="utf-8" content="width=device-width, initial-scale=1.0" />
+    <title>Functions Select</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+
+        #func_select{
+            background-color: lightcyan;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 300px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        input[type="submit"] {
+            background-color: whitegrey;
+            font-size: 160%;
+            width: 80%;
+            height: 45px;
+            margin-top: 40px;
+            margin-bottom: 40px;
+            cursor: pointer;
+            border-radius: 12px; /* 添加圆角效果 */
+            transition: background-color 0.3s, transform 0.3s; /* 添加过渡效果 */
+        }
+
+        input[value="show timer info"]{
+            background-color: lightskyblue;
+        }
+
+        input[value="set bell"]{
+            background-color: darkturquoise;
+        }
+
+        input[value="Connect to Wi-Fi"]{
+            background-color: darkseagreen;
+        }
+
+        input[value="test"]{
+            background-color: darkseagreen;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #ddd; /* 悬停效果 */
+        }
+
+        input[type="submit"]:active {
+            transform: scale(0.98); /* 按下效果 */
+        }
+    </style>
+    
+</head>
+
+<body>
+    
+    <div style="background-color: beige;" id="func_select">
+        <h2 style="color: black; justify-content: center;">ESP32 Clock Webserver</h2>
+        <form action="/showInfo" method="get">
+            <input type="submit" value="show timer info">
+        </form>
+        <form action="/setBell" method="get">  
+            <input type="submit" value="set bell">
+        </form>
+        <form action="/wifiConnect" method="get">
+            <input type="submit" value="Connect to Wi-Fi">
+        </form>
+        <form action="#" method="post">
+            <input type="hidden" value="test">
+        </form>
+    </div>
+</body>
+
+</html>

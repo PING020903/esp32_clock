@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" charset="utf-8" content="width=device-width, initial-scale=1.0" />
+    <title>Show Board Info</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+
+        div {
+            margin-bottom: 30px;
+        }
+
+        #board_info {
+            background-color: lightcyan;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 300px;
+        }
+
+        table {
+            border-collapse: collapse;
+            /* 合并边框 */
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid black;
+            /* 设置单元格边框 */
+            padding: 8px;
+            text-align: left;
+        }
+
+        .return-button {
+            background-color: lightgray;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 120%;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .return-button:hover {
+            background-color: darkgray;
+        }
+
+        .return-button:active {
+            background-color: gray;
+            transform: translateY(2px);
+        }
+    </style>
+    <script>
+        // 获取JSON数据的URL
+        const apiUrl = "/setBellEcho";
+        var hostRet = "clock_OK";
+
+        // 函数：根据JSON数据填充表格
+        function populateTable(data, tableId) {
+            const tableBody = document.querySelector(`#${tableId} tbody`);
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    const elementId = `${key.toLowerCase()}`;
+                    const element = document.getElementById(elementId);
+                    if (element) {
+                        element.textContent = data[key];
+                    } else {
+                        console.error(`Element with id ${elementId} not found`);
+                    }
+                }
+            }
+        }
+
+        // 新增: 获取JSON数据并更新表格
+        async function fetchAndPopulateTables() {
+            try {
+                await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': "text/plain"
+                    },
+                    body: 'Ready send httpget infodata'
+                })
+                    .then(response => response.text())
+                    .then(data => {
+                        console.log('host return 1:', data); // 打印服务器返回的数据
+                        if (data != hostRet) {
+                            alert("get infodata failed");
+                            return;
+                        }
+
+                        const JSONData = { "struct": "JSON" };
+                        fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(JSONData)
+                        })
+                            .then(response => response.json())
+                            .then(data => {
+                                // 打印接收到的数据
+                                console.log('Received data:', data);
+                                // 更新表格
+                                if (data.base_info_table) {
+                                    console.log('base_info_table:', data.base_info_table);
+                                    populateTable(data.base_info_table, "base_info_table");
+                                } else {
+                                    console.error('base_info is undefined');
+                                }
+                                if (data.wifi_info_table) {
+                                    console.log('wifi_info_table:', data.wifi_info_table);
+                                    populateTable(data.wifi_info_table, "wifi_info_table");
+                                } else {
+                                    console.error('wifi_info is undefined');
+                                }
+                                // 插入数据到timer_info_table
+                                if (data.timer_info_table) {
+                                    console.log('timer_info:', data.timer_info_table);
+                                    for (const timerKey in data.timer_info_table) {
+                                        if (data.timer_info_table.hasOwnProperty(timerKey)) {
+                                            const timerData = data.timer_info_table[timerKey];
+                                            const row = document.createElement('tr');
+                                            for (const key in timerData) {
+                                                if (timerData.hasOwnProperty(key)) {
+                                                    const cell = document.createElement('td');
+                                                    cell.textContent = timerData[key];
+                                                    row.appendChild(cell);
+                                                }
+                                            }
+                                            document.querySelector('#timer_info_table tbody').appendChild(row);
+                                        }
+                                    }
+                                } else {
+                                    console.error('timer_info is undefined');
+                                }
+                            })
+                            .catch(error => console.error('Error sending custom string:', error));
+                    })
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: 'Exit this status'
+                });
+                const exitData = await response.text();
+                console.log('host return 2:', exitData); // 打印服务器返回的数据
+                if (exitData != hostRet) {
+                    alert("get infodata failed");
+                    return;
+                }
+            }
+            catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+            // 返回true以确保异步操作正确处理
+            return true;
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+
+            // 新增: 获取JSON数据并更新表格
+            fetchAndPopulateTables();
+        });
+    </script>
+</head>
+
+<body>
+    <div id="board_info">
+        <h2 style="color: black;">ESP32 Clock Webserver</h2>
+        <div id="base_info">
+            <table id="base_info_table">
+                <thead>
+                    <tr>
+                        <th>Base Info ( 基础信息 )</th>
+                        <th>Value( 值 )</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Chip Model</td>
+                        <td id="chip_model"></td>
+                    </tr>
+                    <tr>
+                        <td>Flash Size</td>
+                        <td id="flash_size"></td>
+                    </tr>
+                    <tr>
+                        <td>Core Frequency </td>
+                        <td id="frequency"></td>
+                    </tr>
+                    <tr>
+                        <td>WiFi </td>
+                        <td id="wifi"></td>
+                    </tr>
+                    <tr>
+                        <td>Bluetooth </td>
+                        <td id="bluetooth"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="WiFi_info">
+            <table id="wifi_info_table">
+                <thead>
+                    <tr>
+                        <th>Wi-Fi Info ( Wi-Fi信息 )</th>
+                        <th>Value( 值 )</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>WiFi mode</td>
+                        <td id="wifi_mode"></td>
+                    </tr>
+                    <tr>
+                        <td>SSID</td>
+                        <td id="sta_ssid"></td>
+                    </tr>
+                    <tr>
+                        <td>local IP Address</td>
+                        <td id="local_ip_address"></td>
+
+                    </tr>
+                    <tr>
+                        <td>AP-SSID</td>
+                        <td id="ap_ssid"></td>
+                    </tr>
+                    <tr>
+                        <td>AP-password</td>
+                        <td id="ap_password"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="timer_info">
+            <p>Sun:1, Mon:2, Tue:4, Wed:8, Thu:16, Fri:32, Sat:64</p>
+            <table id="timer_info_table">
+                <thead>
+                    <tr>
+                        <th>Timer number</th>
+                        <th>time 铃响时间 </th>
+                        <th>days 响铃日期 </th>
+                        <th>mode 闹钟模式 </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 动态插入行 -->
+                </tbody>
+            </table>
+        </div>
+        <button class="return-button" onclick="window.history.back()">
+            Return
+        </button>
+    </div>
+</body>
+
+</html>

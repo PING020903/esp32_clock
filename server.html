@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" charset="utf-8" content="width=device-width, initial-scale=1">
+    <title>HELLO ESP32</title>
+</head>
+
+<body>
+    <style type="text/css">
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 800px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 20px;
+            /* 增加底部间距 */
+            display: flex;
+            align-items: center;
+            /* 垂直居中对齐 */
+        }
+
+        label {
+            margin-right: 10px;
+            /* 增加右侧间距 */
+        }
+
+        input,
+        textarea {
+            flex: 1;
+            /* 使输入框占据剩余空间 */
+        }
+
+        button,
+        input[type="submit"] {
+            padding: 10px 20px;
+            font-size: 160%;
+            width: 80%;
+            cursor: pointer;
+        }
+
+        iframe {
+            display: block;
+            width: 100%;
+            border: none;
+        }
+    </style>
+
+    <div class="container">
+        <h1>ESP32 clock, from ESP32!</h1>
+        <div id="h1" style="height: 10px; width: 200px; color: aquamarine;"></div>
+        <form action="/echo" method="post">
+            <ul>
+                <li>
+                    <label for="LED_switch">LED_off:</label>
+                    <input type="radio" id="off" name="LED_switch">
+                    <label for="LED_switch">LED_off:</label>
+                    <input type="radio" id="on" name="LED_switch">
+                </li>
+                <li>
+                    <label for="name">Name:</label>
+                    <input type="text" id="name" name="user_name" />
+                </li>
+                <li>
+                    <label for="mail">E-mail:</label>
+                    <input type="email" id="mail" name="user_email" />
+                </li>
+                <li>
+                    <label for="msg">Message:</label>
+                    <textarea id="msg" name="user_message"></textarea>
+                </li>
+            </ul>
+            <button type="submit">Submit</button>
+            <!-- 或者使用 <input type="submit" value="Submit"> -->
+        </form>
+    </div>
+
+</body>
+
+</html>
